@@ -1,6 +1,7 @@
 export type RootStackParamList = {
   ModeSelection: undefined;
   ParentAuth: { mode: 'login' | 'signup' };
+  ChildLogin: undefined;
   ChildSelection: undefined;
   ChildTabs: undefined;
   ParentTabs: undefined;
@@ -8,7 +9,8 @@ export type RootStackParamList = {
   QuestDetails: { questId: string };
   Quests: undefined;
   Rewards: undefined;
-  Profile: undefined;
+  ParentProfile: undefined;
+  ChildProfile: undefined;
 };
 
 // This helps with type checking and auto-completion for navigation props

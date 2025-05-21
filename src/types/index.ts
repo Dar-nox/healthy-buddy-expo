@@ -16,6 +16,7 @@ export type ChildProfile = {
   xp: number;
   coins: number;
   avatar: string;
+  accessCode: string;
   completedQuests: string[];
   inventory: InventoryItem[];
   parentId: string;

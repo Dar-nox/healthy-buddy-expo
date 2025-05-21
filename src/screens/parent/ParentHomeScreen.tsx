@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -7,11 +7,14 @@ import {
   ScrollView, 
   TouchableOpacity, 
   Image,
-  FlatList
+  FlatList,
+  ActivityIndicator
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { RootStackParamList } from '../../types/navigation';
+import { useAuth } from '../../context/AuthContext';
+import { ChildProfile } from '../../types';
 
 type ParentHomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ParentTabs'>;
 
@@ -19,34 +22,87 @@ type Props = {
   navigation: ParentHomeScreenNavigationProp;
 };
 
-// Mock data for children
-const children = [
-  { id: '1', name: 'Alex Johnson', avatar: 'https://randomuser.me/api/portraits/lego/1.jpg', points: 245, level: 3 },
-  { id: '2', name: 'Sam Johnson', avatar: 'https://randomuser.me/api/portraits/lego/2.jpg', points: 180, level: 2 },
-];
-
-// Mock data for recent activities
-const recentActivities = [
-  { id: '1', childName: 'Alex', action: 'completed the quest', quest: 'Eat a Rainbow', points: 30, time: '2 hours ago' },
-  { id: '2', childName: 'Sam', action: 'redeemed a reward', reward: 'Extra Screen Time', points: -50, time: '5 hours ago' },
-  { id: '3', childName: 'Alex', action: 'earned a badge', badge: 'Healthy Eater', time: '1 day ago' },
-  { id: '4', childName: 'Sam', action: 'completed the quest', quest: 'Drink Water', points: 20, time: '2 days ago' },
-];
+interface Activity {
+  id: string;
+  childName: string;
+  action: string;
+  quest?: string;
+  reward?: string;
+  badge?: string;
+  points?: number;
+  time: string;
+}
 
 const ParentHomeScreen: React.FC<Props> = ({ navigation }) => {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const { user } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const [children, setChildren] = useState<ChildProfile[]>([]);
+  const [recentActivities, setRecentActivities] = useState<Activity[]>([]);
 
-  const renderChildCard = ({ item }: { item: typeof children[0] }) => (
+  // Function to generate recent activities from children's data
+  const generateActivities = (childrenProfiles: ChildProfile[]): Activity[] => {
+    const activities: Activity[] = [];
+    
+    childrenProfiles.forEach(child => {
+      // Add activities based on completed quests
+      if (child.completedQuests && child.completedQuests.length > 0) {
+        child.completedQuests.forEach((questId, index) => {
+          // In a real app, you would fetch the actual quest details here
+          activities.push({
+            id: `quest-${child.id}-${index}`,
+            childName: child.name,
+            action: 'completed the quest',
+            quest: `Quest #${index + 1}`,
+            points: 10, // Default points for a quest
+            time: 'recently',
+          });
+        });
+      }
+
+      // Add activities based on inventory (redeemed rewards)
+      if (child.inventory && child.inventory.length > 0) {
+        child.inventory.forEach((item, index) => {
+          activities.push({
+            id: `reward-${child.id}-${index}`,
+            childName: child.name,
+            action: 'unlocked a new item',
+            reward: item.name || 'New Item',
+            time: 'recently',
+          });
+        });
+      }
+    });
+
+    // Sort by most recent (in a real app, you'd have actual timestamps)
+    return activities.sort(() => Math.random() - 0.5).slice(0, 5); // Show 5 most recent
+  };
+
+  useEffect(() => {
+    if (user && user.children) {
+      setChildren(user.children);
+      const activities = generateActivities(user.children);
+      setRecentActivities(activities);
+    }
+    setIsLoading(false);
+  }, [user]);
+
+  const renderChildCard = ({ item }: { item: ChildProfile }) => (
     <TouchableOpacity 
       style={styles.childCard}
-      onPress={() => navigation.navigate('ChildSelection')}
+      onPress={() => {
+        // Navigate to child details or handle the press as needed
+        // For now, we'll just log the child ID
+        console.log('Selected child:', item.id);
+      }}
     >
-      <Image source={{ uri: item.avatar }} style={styles.childAvatar} />
-      <Text style={styles.childName}>{item.name}</Text>
+      <View style={styles.childAvatarPlaceholder}>
+        <Text style={styles.avatarPlaceholderText}>{item.avatar || '👦'}</Text>
+      </View>
+      <Text style={styles.childName} numberOfLines={1} ellipsizeMode="tail">{item.name}</Text>
       <View style={styles.childStats}>
         <View style={styles.statItem}>
-          <Text style={styles.statValue}>{item.points}</Text>
-          <Text style={styles.statLabel}>Points</Text>
+          <Text style={styles.statValue}>{item.coins}</Text>
+          <Text style={styles.statLabel}>Coins</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
@@ -232,12 +288,22 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   childAvatar: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: '#E8F5E9',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    marginBottom: 8,
+  },
+  childAvatarPlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#e0e0e0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  avatarPlaceholderText: {
+    fontSize: 40,
   },
   childName: {
     fontSize: 15,

@@ -12,18 +12,22 @@ type Props = {
 };
 
 const ProfileScreen: React.FC<Props> = ({ navigation }) => {
-  // Mock user data
+  const { user: currentUser, childProfile } = useAuth();
+  
+  // Use actual user data or fallback to default values
   const user = {
-    name: 'Alex Johnson',
-    email: 'alex.j@example.com',
-    avatar: 'https://randomuser.me/api/portraits/lego/1.jpg',
-    points: 245,
-    level: 3,
-    completedQuests: 24,
+    name: currentUser?.name || 'User',
+    email: currentUser?.email || '',
+    avatar: currentUser?.avatar || 'https://randomuser.me/api/portraits/lego/1.jpg',
+    points: 0, // You can add points to your user model if needed
+    level: 1,  // You can add level to your user model if needed
+    completedQuests: currentUser?.children?.reduce((total, child) => 
+      total + (child.completedQuests?.length || 0), 0) || 0,
   };
 
   const menuItems = [
     { icon: 'person-outline', label: 'Edit Profile', screen: 'EditProfile' },
+    { icon: 'people-outline', label: 'Manage Children', screen: 'ChildSelection' },
     { icon: 'notifications-outline', label: 'Notifications', screen: 'Notifications' },
     { icon: 'settings-outline', label: 'Settings', screen: 'Settings' },
     { icon: 'help-circle-outline', label: 'Help & Support', screen: 'Help' },
@@ -36,8 +40,13 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const handleLogout = async () => {
     try {
       await logout();
-      // The navigation will be handled by the AuthContext
+      // Navigate to the auth screen after successful logout
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'ParentAuth' }],
+      });
     } catch (error) {
+      console.error('Logout error:', error);
       Alert.alert('Error', 'Failed to log out. Please try again.');
     }
   };
@@ -122,7 +131,43 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
         {/* Menu Items */}
         <View style={styles.menuContainer}>
-          {menuItems.map(renderMenuItem)}
+          {menuItems.map((item) => (
+            <TouchableOpacity 
+              key={item.screen}
+              style={styles.menuItem}
+              onPress={() => {
+                if (item.screen === 'Logout') {
+                  Alert.alert(
+                    'Logout',
+                    'Are you sure you want to log out?',
+                    [
+                      {
+                        text: 'Cancel',
+                        style: 'cancel',
+                      },
+                      {
+                        text: 'Logout',
+                        onPress: handleLogout,
+                        style: 'destructive',
+                      },
+                    ],
+                    { cancelable: true }
+                  );
+                } else if (item.screen === 'ChildSelection') {
+                  navigation.navigate('ChildSelection');
+                } else {
+                  // Handle other menu items
+                  // navigation.navigate(item.screen as any);
+                }
+              }}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name={item.icon as any} size={22} color="#555" />
+                <Text style={styles.menuItemText}>{item.label}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#999" />
+            </TouchableOpacity>
+          ))}
         </View>
       </ScrollView>
     </SafeAreaView>

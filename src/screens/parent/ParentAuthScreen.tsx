@@ -4,7 +4,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
-import { RootStackParamList } from '../../navigation';
+import { RootStackParamList } from '../../types/navigation';
 
 type ParentAuthScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ParentAuth'>;
 type ParentAuthScreenRouteProp = RouteProp<RootStackParamList, 'ParentAuth'>;
@@ -42,10 +42,8 @@ const ParentAuthScreen: React.FC<Props> = ({ navigation, route }) => {
     setIsLoading(true);
     
     try {
-      let success = false;
-      
       if (isSignup) {
-        success = await register({
+        const success = await register({
           name,
           email,
           password,
@@ -53,15 +51,18 @@ const ParentAuthScreen: React.FC<Props> = ({ navigation, route }) => {
         });
         
         if (success) {
-          // After successful registration, go to child setup
-          navigation.navigate('ChildSelection');
+          // After successful registration, go to parent home
+          navigation.replace('ParentTabs');
         } else {
           Alert.alert('Error', 'Registration failed. Please try again.');
         }
       } else {
-        success = await login(email, password);
+        const success = await login(email, password);
         
-        if (!success) {
+        if (success) {
+          // After successful login, navigate to the appropriate screen based on user type
+          navigation.replace('ParentTabs');
+        } else {
           Alert.alert('Error', 'Invalid email or password');
         }
       }
@@ -79,6 +80,16 @@ const ParentAuthScreen: React.FC<Props> = ({ navigation, route }) => {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
     >
+      <View style={styles.headerContainer}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          disabled={isLoading}
+        >
+          <Ionicons name="arrow-back" size={24} color="#2c3e50" />
+          <Text style={styles.backButtonText}>Back</Text>
+        </TouchableOpacity>
+      </View>
       <ScrollView 
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
@@ -221,6 +232,25 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  headerContainer: {
+    paddingTop: 16,
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    backgroundColor: '#fff',
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    alignSelf: 'flex-start',
+  },
+  backButtonText: {
+    marginLeft: 4,
+    color: '#2c3e50',
+    fontSize: 16,
   },
   scrollContent: {
     flexGrow: 1,

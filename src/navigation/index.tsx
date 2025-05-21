@@ -1,5 +1,5 @@
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useEffect, useRef } from 'react';
+import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createDrawerNavigator } from '@react-navigation/drawer';
@@ -11,12 +11,14 @@ import { RootStackParamList } from '../types/navigation';
 // Screens
 const ModeSelectionScreen = require('../screens/ModeSelectionScreen').default;
 const ParentAuthScreen = require('../screens/parent/ParentAuthScreen').default;
+const ChildLoginScreen = require('../screens/child/ChildLoginScreen').default;
 const ChildSelectionScreen = require('../screens/ChildSelectionScreen').default;
 const ChildHomeScreen = require('../screens/child/ChildHomeScreen').default;
 const ParentHomeScreen = require('../screens/parent/ParentHomeScreen').default;
 const QuestsScreen = require('../screens/QuestsScreen').default;
 const RewardsScreen = require('../screens/RewardsScreen').default;
-const ProfileScreen = require('../screens/ProfileScreen').default;
+import ParentProfileScreen from '../screens/parent/ParentProfileScreen';
+import ChildProfileScreen from '../screens/child/ChildProfileScreen';
 const CreateQuestScreen = require('../screens/parent/CreateQuestScreen').default;
 const QuestDetailsScreen = require('../screens/QuestDetailsScreen').default;
 
@@ -26,6 +28,9 @@ const useAuth = require('../context/AuthContext').useAuth;
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
 const Drawer = createDrawerNavigator();
+
+// Create a navigation reference to be used for resetting the stack
+export const navigationRef = React.createRef<NavigationContainerRef<RootStackParamList>>();
 
 // Child Bottom Tab Navigator
 const ChildTabNavigator = () => (
@@ -62,7 +67,7 @@ const ChildTabNavigator = () => (
     <Tab.Screen name="Home" component={ChildHomeScreen} options={{ headerShown: false }} />
     <Tab.Screen name="Quests" component={QuestsScreen} options={{ headerShown: false }} />
     <Tab.Screen name="Rewards" component={RewardsScreen} options={{ headerShown: false }} />
-    <Tab.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
+    <Tab.Screen name="Profile" component={ChildProfileScreen} options={{ headerShown: false }} />
   </Tab.Navigator>
 );
 
@@ -120,7 +125,7 @@ const ParentDrawerNavigator = () => (
     />
     <Drawer.Screen 
       name="Profile" 
-      component={ProfileScreen} 
+      component={ParentProfileScreen} 
       options={{
         drawerIcon: ({ color, size }) => (
           <Ionicons name="person" size={size} color={color} />
@@ -131,18 +136,41 @@ const ParentDrawerNavigator = () => (
 );
 
 const Navigation = () => {
-  const { user, isLoading } = useAuth();
+  const { user, childProfile, isLoading } = useAuth();
 
   if (isLoading) {
     // Show loading screen
     return null;
   }
 
+  // Helper function to get initial route name based on auth state
+  const getInitialRouteName = () => {
+    if (!user) return 'ModeSelection';
+    if (user.type === 'parent') return 'ParentTabs';
+    // If we have a child profile, go directly to child tabs
+    if (childProfile) return 'ChildTabs';
+    // Otherwise, go to child login
+    return 'ChildLogin';
+  };
+  
+  // Set up navigation reference
+  const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
+  
+  // Reset the navigation stack when user logs out
+  useEffect(() => {
+    if (!user) {
+      navigationRef.current?.reset({
+        index: 0,
+        routes: [{ name: 'ModeSelection' }],
+      });
+    }
+  }, [user]);
+
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator 
         screenOptions={{ headerShown: false }}
-        initialRouteName={!user ? 'ModeSelection' : user.type === 'parent' ? 'ParentTabs' : 'ChildTabs'}
+        initialRouteName={getInitialRouteName()}
       >
         {/* Auth Screens */}
         <Stack.Screen 
@@ -150,12 +178,38 @@ const Navigation = () => {
           component={ModeSelectionScreen} 
           options={{
             animationTypeForReplace: !user ? 'pop' : 'push',
+            // Prevent going back if not authenticated
+            gestureEnabled: false,
           }}
         />
-        <Stack.Screen name="ParentAuth" component={ParentAuthScreen} />
-        <Stack.Screen name="ChildSelection" component={ChildSelectionScreen} />
+        <Stack.Screen 
+          name="ParentAuth" 
+          component={ParentAuthScreen} 
+          options={{
+            // Only allow going back if user is not authenticated
+            gestureEnabled: !user,
+          }}
+        />
+        <Stack.Screen 
+          name="ChildLogin" 
+          component={ChildLoginScreen}
+          options={{
+            // Only allow going back to mode selection
+            gestureEnabled: false,
+            // Prevent going back if already logged in as a child
+            headerLeft: () => null,
+          }}
+        />
+        <Stack.Screen 
+          name="ChildSelection" 
+          component={ChildSelectionScreen}
+          options={{
+            // Only allow going back to mode selection
+            gestureEnabled: false,
+          }}
+        />
         
-        {/* Main App Screens */}
+        {/* Main App Screens - Protected Routes */}
         <Stack.Screen 
           name="ParentTabs" 
           component={ParentDrawerNavigator} 

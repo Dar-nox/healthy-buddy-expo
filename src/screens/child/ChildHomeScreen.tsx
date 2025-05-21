@@ -7,8 +7,7 @@ import {
   ScrollView, 
   SafeAreaView, 
   RefreshControl,
-  Alert,
-  Image
+  Alert
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,12 +21,6 @@ const DAILY_QUESTS = [
   { id: '3', title: 'Play outside', xp: 15, completed: false },
 ];
 
-const REWARDS = [
-  { id: '1', name: 'Sticker Pack', cost: 20, icon: 'star' },
-  { id: '2', name: 'Game Time', cost: 30, icon: 'game-controller' },
-  { id: '3', name: 'Choose Dinner', cost: 50, icon: 'restaurant' },
-];
-
 type ChildHomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ChildTabs'>;
 
 type Props = {
@@ -37,7 +30,6 @@ type Props = {
 const ChildHomeScreen: React.FC<Props> = ({ navigation }) => {
   const { childProfile, logout } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState('quests');
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -50,11 +42,6 @@ const ChildHomeScreen: React.FC<Props> = ({ navigation }) => {
   const handleCompleteQuest = (questId: string) => {
     // In a real app, this would mark the quest as complete in the backend
     Alert.alert('Quest Complete!', 'Your parent will verify your completion.');
-  };
-
-  const handleRedeemReward = (rewardId: string) => {
-    // In a real app, this would deduct coins and grant the reward
-    Alert.alert('Reward Claimed!', 'Show this to your parent to redeem your reward.');
   };
 
   const handleLogout = async () => {
@@ -127,201 +114,45 @@ const ChildHomeScreen: React.FC<Props> = ({ navigation }) => {
           </Text>
         </View>
 
-        {/* Tabs */}
-        <View style={styles.tabsContainer}>
-          <TouchableOpacity 
-            style={[
-              styles.tab, 
-              activeTab === 'quests' && styles.activeTab
-            ]}
-            onPress={() => setActiveTab('quests')}
-          >
-            <Ionicons 
-              name="checkbox" 
-              size={20} 
-              color={activeTab === 'quests' ? '#4CAF50' : '#666'} 
-            />
-            <Text 
-              style={[
-                styles.tabText,
-                activeTab === 'quests' && styles.activeTabText
-              ]}
-            >
-              Quests
-            </Text>
-          </TouchableOpacity>
+        {/* Quests Section */}
+        <View style={styles.questsContainer}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Daily Quests</Text>
+            <TouchableOpacity style={styles.seeAllButton}>
+              <Text style={styles.seeAllText}>See All</Text>
+              <Ionicons name="chevron-forward" size={16} color="#4CAF50" />
+            </TouchableOpacity>
+          </View>
           
-          <TouchableOpacity 
-            style={[
-              styles.tab, 
-              activeTab === 'rewards' && styles.activeTab
-            ]}
-            onPress={() => setActiveTab('rewards')}
-          >
-            <Ionicons 
-              name="gift" 
-              size={20} 
-              color={activeTab === 'rewards' ? '#4CAF50' : '#666'} 
-            />
-            <Text 
-              style={[
-                styles.tabText,
-                activeTab === 'rewards' && styles.activeTabText
-              ]}
-            >
-              Rewards
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Content based on active tab */}
-        {activeTab === 'quests' ? (
-          <View style={styles.questsContainer}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Daily Quests</Text>
-              <TouchableOpacity style={styles.seeAllButton}>
-                <Text style={styles.seeAllText}>See All</Text>
-                <Ionicons name="chevron-forward" size={16} color="#4CAF50" />
-              </TouchableOpacity>
-            </View>
-            
-            {DAILY_QUESTS.map((quest) => (
-              <View key={quest.id} style={styles.questCard}>
-                <View style={styles.questInfo}>
-                  <View style={[
-                    styles.questCheckbox,
-                    quest.completed && styles.questCheckboxCompleted
-                  ]}>
-                    {quest.completed && (
-                      <Ionicons name="checkmark" size={16} color="#fff" />
-                    )}
-                  </View>
-                  <Text style={styles.questTitle}>{quest.title}</Text>
+          {DAILY_QUESTS.map((quest) => (
+            <View key={quest.id} style={styles.questCard}>
+              <View style={styles.questInfo}>
+                <View style={[
+                  styles.questCheckbox,
+                  quest.completed && styles.questCheckboxCompleted
+                ]}>
+                  {quest.completed && (
+                    <Ionicons name="checkmark" size={16} color="#fff" />
+                  )}
                 </View>
-                
-                <View style={styles.questXpContainer}>
-                  <Text style={styles.questXpText}>+{quest.xp} XP</Text>
-                </View>
-                
-                <TouchableOpacity 
-                  style={[
-                    styles.questButton,
-                    quest.completed && styles.questButtonCompleted
-                  ]}
-                  onPress={() => handleCompleteQuest(quest.id)}
-                  disabled={quest.completed}
-                >
-                  <Text 
-                    style={[
-                      styles.questButtonText,
-                      quest.completed && styles.questButtonTextCompleted
-                    ]}
+                <Text style={styles.questTitle}>{quest.title}</Text>
+              </View>
+              
+              <View style={styles.questXpContainer}>
+                <Text style={styles.questXpText}>+{quest.xp} XP</Text>
+                {!quest.completed && (
+                  <TouchableOpacity 
+                    style={styles.questButton}
+                    onPress={() => handleCompleteQuest(quest.id)}
                   >
-                    {quest.completed ? 'Completed' : 'Complete'}
-                  </Text>
-                </TouchableOpacity>
+                    <Text style={styles.questButtonText}>Complete</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-            ))}
-          </View>
-        ) : (
-          <View style={styles.rewardsContainer}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Available Rewards</Text>
-              <TouchableOpacity style={styles.seeAllButton}>
-                <Text style={styles.seeAllText}>See All</Text>
-                <Ionicons name="chevron-forward" size={16} color="#4CAF50" />
-              </TouchableOpacity>
             </View>
-            
-            {REWARDS.map((reward) => (
-              <View key={reward.id} style={styles.rewardCard}>
-                <View style={styles.rewardIconContainer}>
-                  <Ionicons name={reward.icon as any} size={24} color="#4CAF50" />
-                </View>
-                <View style={styles.rewardInfo}>
-                  <Text style={styles.rewardName}>{reward.name}</Text>
-                  <View style={styles.rewardCostContainer}>
-                    <Ionicons name="star" size={16} color="#FFC107" />
-                    <Text style={styles.rewardCost}>{reward.cost}</Text>
-                  </View>
-                </View>
-                <TouchableOpacity 
-                  style={styles.redeemButton}
-                  onPress={() => handleRedeemReward(reward.id)}
-                >
-                  <Text style={styles.redeemButtonText}>Redeem</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        )}
+          ))}
+        </View>
       </ScrollView>
-      
-      {/* Bottom Navigation */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity 
-          style={styles.navButton}
-          onPress={() => navigation.navigate('ChildTabs', { screen: 'Home' })}
-        >
-          <Ionicons 
-            name="home" 
-            size={24} 
-            color={activeTab === 'quests' ? '#4CAF50' : '#666'} 
-          />
-          <Text style={[
-            styles.navButtonText,
-            activeTab === 'quests' && styles.navButtonTextActive
-          ]}>
-            Home
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.navButton}
-          onPress={() => navigation.navigate('ChildTabs', { screen: 'Quests' })}
-        >
-          <Ionicons 
-            name="checkbox" 
-            size={24} 
-            color={activeTab === 'quests' ? '#4CAF50' : '#666'} 
-          />
-          <Text style={[
-            styles.navButtonText,
-            activeTab === 'quests' && styles.navButtonTextActive
-          ]}>
-            Quests
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.navButton}
-          onPress={() => navigation.navigate('ChildTabs', { screen: 'Rewards' })}
-        >
-          <Ionicons 
-            name="gift" 
-            size={24} 
-            color={activeTab === 'rewards' ? '#4CAF50' : '#666'} 
-          />
-          <Text style={[
-            styles.navButtonText,
-            activeTab === 'rewards' && styles.navButtonTextActive
-          ]}>
-            Rewards
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.navButton}
-          onPress={() => navigation.navigate('ChildTabs', { screen: 'Profile' })}
-        >
-          <Ionicons 
-            name="person" 
-            size={24} 
-            color="#666" 
-          />
-          <Text style={styles.navButtonText}>Profile</Text>
-        </TouchableOpacity>
-      </View>
     </SafeAreaView>
   );
 };
@@ -599,27 +430,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   rewardCost: {
-    fontSize: 14,
-    color: '#F57C00',
-    fontWeight: '600',
-    marginLeft: 4,
-  },
-  redeemButton: {
-    backgroundColor: '#4CAF50',
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  redeemButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  bottomNav: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     flexDirection: 'row',
     backgroundColor: '#fff',
     borderTopWidth: 1,

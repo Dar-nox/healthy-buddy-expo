@@ -31,7 +31,7 @@ const ModeSelectionScreen: React.FC<Props> = ({ navigation }) => {
           
           <TouchableOpacity 
             style={[styles.button, styles.childButton]}
-            onPress={() => navigation.navigate('ChildSelection')}
+            onPress={() => navigation.navigate('ChildLogin')}
           >
             <Text style={styles.buttonText}>Child Mode</Text>
             <Text style={styles.buttonSubtext}>Start your adventure!</Text>
