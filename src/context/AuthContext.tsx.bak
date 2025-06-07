@@ -1,0 +1,463 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { User, ChildProfile, Quest } from '../types';
+
+interface AuthContextType {
+  user: User | null;
+  childProfile: ChildProfile | null;
+  quests: Quest[];
+  login: (email: string, password: string) => Promise<boolean>;
+  loginAsChild: (accessCode: string, avatar: string) => Promise<boolean>;
+  register: (userData: Omit<User, 'id' | 'createdAt' | 'children'>) => Promise<boolean>;
+  logout: () => Promise<void>;
+  selectChild: (childId: string) => Promise<void>;
+  updateUser: (updatedUser: User) => Promise<void>;
+  createQuest: (quest: Omit<Quest, 'id' | 'createdAt' | 'isCompleted' | 'isVerified' | 'verifiedAt' | 'completedAt'>) => Promise<boolean>;
+  completeQuest: (questId: string) => Promise<boolean>;
+  removeQuest: (questId: string) => Promise<boolean>;
+  isLoading: boolean;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const USER_STORAGE_KEY = '@healthy_buddy_user';
+const CHILD_PROFILE_STORAGE_KEY = '@healthy_buddy_child_profile';
+
+// Mock user data - in a real app, this would be replaced with API calls
+const MOCK_USERS: User[] = [
+  {
+    id: 'parent1',
+    name: 'Parent User',
+    email: 'parent@example.com',
+    password: 'password123',
+    type: 'parent',
+    children: [
+      {
+        id: 'child1',
+        name: 'Child One',
+        level: 1,
+        xp: 0,
+        coins: 10,
+        avatar: '👦',
+        accessCode: 'CHILD1-CODE',
+        completedQuests: [],
+        inventory: [],
+        parentId: 'parent1',
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: 'child2',
+        name: 'Child Two',
+        level: 2,
+        xp: 150,
+        coins: 25,
+        avatar: '👧',
+        accessCode: 'CHILD2-CODE',
+        completedQuests: [],
+        inventory: [],
+        parentId: 'parent1',
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    createdAt: new Date().toISOString(),
+  },
+];
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [childProfile, setChildProfile] = useState<ChildProfile | null>(null);
+  const [quests, setQuests] = useState<Quest[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isQuestsLoading, setIsQuestsLoading] = useState(true);
+
+  // Load user and quests from storage on initial render
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsQuestsLoading(true);
+        const [userJson, childJson, questsJson] = await Promise.all([
+          AsyncStorage.getItem(USER_STORAGE_KEY),
+          AsyncStorage.getItem(CHILD_PROFILE_STORAGE_KEY),
+          AsyncStorage.getItem('@healthy_buddy_quests')
+        ]);
+        
+        if (userJson) {
+          const parsedUser = JSON.parse(userJson);
+          setUser(parsedUser);
+          
+          if (childJson) {
+            setChildProfile(JSON.parse(childJson));
+          }
+        }
+        
+        if (questsJson) {
+          const parsedQuests = JSON.parse(questsJson);
+          setQuests(Array.isArray(parsedQuests) ? parsedQuests : []);
+        } else {
+          // Initialize with empty array if no quests exist
+          setQuests([]);
+        }
+      } catch (error) {
+        console.error('Failed to load data', error);
+        // Ensure quests is always an array even if there's an error
+        setQuests([]);
+      } finally {
+        setIsLoading(false);
+        setIsQuestsLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  const login = async (email: string, password: string): Promise<boolean> => {
+    try {
+      // First check mock users (for development)
+      let foundUser = MOCK_USERS.find(
+        (u) => u.email === email && u.password === password
+      );
+
+      // If not found in mock users, check AsyncStorage (for registered users)
+      if (!foundUser) {
+        const storedUserJson = await AsyncStorage.getItem(USER_STORAGE_KEY);
+        if (storedUserJson) {
+          const storedUser = JSON.parse(storedUserJson);
+          if (storedUser.email === email && storedUser.password === password) {
+            foundUser = storedUser;
+          }
+        }
+      }
+
+      if (foundUser) {
+        // Clone the user to avoid reference issues
+        const userToSave = { ...foundUser };
+        
+        // Ensure children array exists
+        if (!userToSave.children) {
+          userToSave.children = [];
+        }
+        
+        // Save the full user object to AsyncStorage to preserve children
+        await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userToSave));
+        
+        // If user has children, store the first child as selected
+        if (userToSave.children && userToSave.children.length > 0) {
+          await AsyncStorage.setItem(CHILD_PROFILE_STORAGE_KEY, JSON.stringify(userToSave.children[0]));
+          setChildProfile(userToSave.children[0]);
+        } else {
+          // Clear any existing child profile if user has no children
+          await AsyncStorage.removeItem(CHILD_PROFILE_STORAGE_KEY);
+          setChildProfile(null);
+        }
+        
+        setUser(userToSave);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Login failed', error);
+      return false;
+    }
+  };
+
+  const loginAsChild = async (accessCode: string, avatar: string): Promise<boolean> => {
+    try {
+      console.log('Attempting child login with access code:', accessCode);
+      setIsLoading(true);
+      
+      // Search for a child with this access code in MOCK_USERS
+      console.log('Searching for child with access code...');
+      let foundChild: ChildProfile | null = null;
+      let parentUser: User | null = null;
+      
+      // Check MOCK_USERS first
+      for (const user of MOCK_USERS) {
+        if (user.children) {
+          const child = user.children.find((c: ChildProfile) =>
+            c.accessCode && c.accessCode.toUpperCase() === accessCode.toUpperCase().trim()
+          );
+          
+          if (child) {
+            console.log('Found matching child in MOCK_USERS');
+            foundChild = { ...child }; // Create a copy to avoid reference issues
+            parentUser = { ...user }; // Create a copy of parent user
+            break;
+          }
+        }
+      }
+      
+      // If not found in MOCK_USERS, check AsyncStorage
+      if (!foundChild) {
+        console.log('Access code not found in MOCK_USERS, checking AsyncStorage...');
+        const userJson = await AsyncStorage.getItem(USER_STORAGE_KEY);
+        if (userJson) {
+          const storedUser = JSON.parse(userJson) as User;
+          
+          if (storedUser.children) {
+            const child = storedUser.children.find((c: ChildProfile) =>
+              c.accessCode && c.accessCode.toUpperCase() === accessCode.toUpperCase().trim()
+            );
+            
+            if (child) {
+              console.log('Found matching child in AsyncStorage');
+              foundChild = { ...child };
+              parentUser = { ...storedUser };
+            }
+          }
+        }
+      }
+
+      if (!foundChild || !parentUser) {
+        console.log('No child found with access code:', accessCode);
+        Alert.alert('Error', 'Invalid access code. Please try again.');
+        return false;
+      }
+
+      // Update child's avatar if provided
+      const updatedChild = { 
+        ...foundChild,
+        ...(avatar ? { avatar } : {}) 
+      };
+
+      // Update the parent's children array with the updated child
+      const updatedChildren = (parentUser.children || []).map((c: ChildProfile) =>
+        c.id === updatedChild.id ? updatedChild : c
+      );
+
+      // Create updated parent user
+      const updatedUser: User = {
+        ...parentUser,
+        children: updatedChildren
+      };
+
+      // Save updated user to AsyncStorage
+      await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
+
+      // Get all quests and update them if needed
+      const questsJson = await AsyncStorage.getItem('@healthy_buddy_quests');
+      const currentQuests = questsJson ? JSON.parse(questsJson) as Quest[] : [];
+      
+      if (Array.isArray(currentQuests)) {
+        let needsUpdate = false;
+        const updatedQuests = currentQuests.map((quest: Quest) => {
+          // If this quest was created by the parent and the child isn't already assigned
+          if (quest.createdBy === updatedUser.id && 
+              (!quest.assignedTo || 
+               (Array.isArray(quest.assignedTo) && !quest.assignedTo.includes(updatedChild.id)))) {
+            needsUpdate = true;
+            return {
+              ...quest,
+              assignedTo: [...(quest.assignedTo || []), updatedChild.id]
+            };
+          }
+          return quest;
+        });
+
+        // Save updated quests if any changes were made
+        if (needsUpdate) {
+          console.log('Updating quests with new child assignments');
+          await AsyncStorage.setItem('@healthy_buddy_quests', JSON.stringify(updatedQuests));
+          setQuests(updatedQuests);
+        }
+      }
+      
+      // Store the child profile in AsyncStorage
+      await AsyncStorage.setItem(CHILD_PROFILE_STORAGE_KEY, JSON.stringify(updatedChild));
+      
+      // Set the user and child profile in state
+      setUser(updatedUser);
+      setChildProfile(updatedChild);
+      
+      console.log('Child login successful');
+      return true;
+    } catch (error) {
+      console.error('Error in loginAsChild:', error);
+      Alert.alert('Error', 'Failed to log in as child');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const register = async (userData: Omit<User, 'id' | 'createdAt' | 'children'>): Promise<boolean> => {
+    try {
+      // In a real app, this would be an API call
+      const newUser: User = {
+        ...userData,
+        id: `user_${Date.now()}`,
+        children: [],
+        createdAt: new Date().toISOString(),
+      };
+
+      // Add to mock users (in a real app, this would be an API call)
+      MOCK_USERS.push(newUser);
+      
+      // Save the full user object to AsyncStorage to preserve children
+      await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newUser));
+      
+      setUser(newUser);
+      return true;
+    } catch (error) {
+      console.error('Registration failed', error);
+      return false;
+    }
+  };
+
+  const logout = async () => {
+    try {
+      // If logging out as a child, we need to restore the parent user
+      if (user?.type === 'child') {
+        // Get the original parent user from AsyncStorage
+        const parentUserJson = await AsyncStorage.getItem('parent_user_backup');
+        
+        if (parentUserJson) {
+          const parentUser = JSON.parse(parentUserJson);
+          // Restore the parent user
+          await AsyncStorage.setItem(USER_STORAGE_KEY, parentUserJson);
+          await AsyncStorage.removeItem('parent_user_backup');
+          setUser(parentUser);
+        } else {
+          // If no parent backup is found, do a full logout
+          await AsyncStorage.removeItem(USER_STORAGE_KEY);
+          setUser(null);
+        }
+      } else {
+        // For parent users, just clear everything
+        await AsyncStorage.removeItem(USER_STORAGE_KEY);
+        setUser(null);
+      }
+      
+      // Clear child profile
+      await AsyncStorage.removeItem(CHILD_PROFILE_STORAGE_KEY);
+      setChildProfile(null);
+      
+      // Clear quests
+      setQuests([]);
+    } catch (error) {
+      console.error('Logout failed', error);
+    }
+  };
+
+  const selectChild = async (childId: string): Promise<void> => {
+    if (!user?.children) return;
+    
+    const child = user.children.find(c => c.id === childId);
+    if (child) {
+      await AsyncStorage.setItem(CHILD_PROFILE_STORAGE_KEY, JSON.stringify(child));
+      setChildProfile(child);
+    }
+  };
+
+  const updateUser = async (updatedUser: User): Promise<void> => {
+    try {
+      // Update in memory
+      setUser(updatedUser);
+      
+      // Update in AsyncStorage
+      await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
+      
+      // If the updated user is a child, update the child profile
+      if (childProfile && updatedUser.children) {
+        const updatedChild = updatedUser.children.find(c => c.id === childProfile.id);
+        if (updatedChild) {
+          await AsyncStorage.setItem(CHILD_PROFILE_STORAGE_KEY, JSON.stringify(updatedChild));
+          setChildProfile(updatedChild);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to update user', error);
+      throw error;
+    }
+  };
+
+  const createQuest = async (
+    questData: Omit<Quest, 'id' | 'createdAt' | 'isCompleted' | 'isVerified' | 'verifiedAt' | 'completedAt'>
+  ): Promise<boolean> => {
+    try {
+      if (!user) return false;
+      
+      const newQuest: Quest = {
+        ...questData,
+        id: `quest_${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        isCompleted: false,
+        isVerified: false,
+        verifiedAt: null,
+        completedAt: null,
+        createdBy: user.id,
+      };
+      
+      // Add to quests
+      const updatedQuests = [...quests, newQuest];
+      setQuests(updatedQuests);
+      await AsyncStorage.setItem('@healthy_buddy_quests', JSON.stringify(updatedQuests));
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to create quest', error);
+      return false;
+    }
+  };
+
+  const completeQuest = async (questId: string): Promise<boolean> => {
+    try {
+      const updatedQuests = quests.map(quest => 
+        quest.id === questId 
+          ? { ...quest, isCompleted: true, completedAt: new Date().toISOString() }
+          : quest
+      );
+      
+      setQuests(updatedQuests);
+      await AsyncStorage.setItem('@healthy_buddy_quests', JSON.stringify(updatedQuests));
+      return true;
+    } catch (error) {
+      console.error('Failed to complete quest', error);
+      return false;
+    }
+  };
+
+  const removeQuest = async (questId: string): Promise<boolean> => {
+    try {
+      const updatedQuests = quests.filter(quest => quest.id !== questId);
+      setQuests(updatedQuests);
+      await AsyncStorage.setItem('@healthy_buddy_quests', JSON.stringify(updatedQuests));
+      return true;
+    } catch (error) {
+      console.error('Failed to remove quest', error);
+      return false;
+    }
+  };
+
+  return (
+    <AuthContext.Provider 
+      value={{
+        user,
+        childProfile,
+        quests,
+        login,
+        loginAsChild,
+        register,
+        logout,
+        selectChild,
+        updateUser,
+        createQuest,
+        completeQuest,
+        removeQuest,
+        isLoading,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = (): AuthContextType => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+export default AuthContext;

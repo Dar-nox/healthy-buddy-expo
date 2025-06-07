@@ -1,8 +1,10 @@
-import React from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { RootStackParamList } from '../types/navigation';
+import { useAuth } from '../context/AuthContext';
+import { Reward } from '../types';
 
 type RewardsScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Rewards'>;
 
@@ -11,18 +13,80 @@ type Props = {
 };
 
 const RewardsScreen: React.FC<Props> = ({ navigation }) => {
-  // Mock rewards data
-  const availableRewards = [
-    { id: '1', title: 'Extra 30 minutes of screen time', cost: 50, icon: 'tv-outline' },
-    { id: '2', title: 'Choose dinner tonight', cost: 30, icon: 'restaurant-outline' },
-    { id: '3', title: 'Stay up 30 minutes later', cost: 75, icon: 'moon-outline' },
-  ];
-
-  const redeemedRewards = [
-    { id: '4', title: 'Ice cream after dinner', date: 'Redeemed 2 days ago' },
-  ];
-
-  const userPoints = 120;
+  const { user, childProfile, rewards, redeemReward } = useAuth();
+  
+  const isParent = user?.type === 'parent';
+  const userId = user?.id || '';
+  
+  // Get available and redeemed rewards based on user type
+  const { availableRewards, redeemedRewards } = useMemo(() => {
+    if (!rewards) return { availableRewards: [], redeemedRewards: [] };
+    
+    const allRewards = [...rewards];
+    
+    if (isParent) {
+      // Parents see all rewards they've created
+      const parentRewards = allRewards.filter(reward => reward.createdBy === userId);
+      return {
+        availableRewards: parentRewards.filter(r => r.isActive),
+        redeemedRewards: parentRewards.filter(r => !r.isActive)
+      };
+    } else {
+      // Children see rewards available to them
+      const childId = childProfile?.id || '';
+      const available = allRewards.filter(reward => 
+        reward.isActive && 
+        (reward.isGlobal || reward.assignedTo?.includes(childId)) &&
+        (!reward.redeemedBy?.includes(childId)) &&
+        (reward.maxRedemptions === undefined || 
+         (reward.redeemedBy?.length || 0) < reward.maxRedemptions)
+      );
+      
+      const redeemed = allRewards.filter(reward => 
+        reward.redeemedBy?.includes(childId)
+      );
+      
+      return { availableRewards: available, redeemedRewards: redeemed };
+    }
+  }, [rewards, isParent, userId, childProfile]);
+  
+  const handleRedeem = async (reward: Reward) => {
+    if (!childProfile) {
+      Alert.alert('Error', 'Child profile not found');
+      return;
+    }
+    
+    // Ensure points are treated as numbers
+    const childPoints = Number(childProfile.points) || 0;
+    const rewardCost = Number(reward.cost) || 0;
+    
+    console.log('=== REWARD REDEMPTION ATTEMPT ===');
+    console.log('Child points:', childPoints);
+    console.log('Reward cost:', rewardCost);
+    
+    // Check if child has enough points
+    if (childPoints < rewardCost) {
+      Alert.alert(
+        'Not Enough Points', 
+        `You need ${rewardCost - childPoints} more points to redeem this reward.`
+      );
+      return;
+    }
+    
+    try {
+      const success = await redeemReward(reward.id, childProfile.id);
+      if (success) {
+        Alert.alert('Success', `You've redeemed: ${reward.title} for ${reward.cost} points`);
+      } else {
+        Alert.alert('Error', 'Failed to redeem reward. You may not have enough points or the reward may no longer be available.');
+      }
+    } catch (error) {
+      console.error('Error redeeming reward:', error);
+      Alert.alert('Error', 'An unexpected error occurred while processing your request.');
+    }
+  };
+  
+  const userPoints = childProfile ? Number(childProfile.points) || 0 : 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -44,48 +108,111 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Ionicons name="gift-outline" size={20} color="#4CAF50" />
-            <Text style={styles.cardTitle}>Available Rewards</Text>
+            <Text style={styles.cardTitle}>
+              {isParent ? 'Active Rewards' : 'Available Rewards'}
+            </Text>
+            {isParent && (
+              <TouchableOpacity 
+                style={styles.addButton}
+                onPress={() => navigation.navigate('AddReward')}
+              >
+                <Ionicons name="add-circle" size={24} color="#4CAF50" />
+              </TouchableOpacity>
+            )}
           </View>
           
-          {availableRewards.map(reward => (
-            <TouchableOpacity key={reward.id} style={styles.rewardItem}>
-              <View style={styles.rewardIcon}>
-                <Ionicons name={reward.icon as any} size={20} color="#4CAF50" />
-              </View>
-              <View style={styles.rewardInfo}>
-                <Text style={styles.rewardTitle}>{reward.title}</Text>
-                <View style={styles.rewardCostContainer}>
-                  <Ionicons name="star" size={14} color="#FFC107" />
-                  <Text style={styles.rewardCost}>{reward.cost} points</Text>
+          {availableRewards.length > 0 ? (
+            availableRewards.map(reward => (
+              <TouchableOpacity 
+                key={reward.id} 
+                style={styles.rewardItem}
+                onPress={() => isParent 
+                  ? navigation.navigate('RewardDetails', { rewardId: reward.id })
+                  : handleRedeem(reward)
+                }
+              >
+                <View style={styles.rewardIcon}>
+                  <Ionicons name={reward.icon as any || 'gift-outline'} size={20} color="#4CAF50" />
                 </View>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#999" />
-            </TouchableOpacity>
-          ))}
+                <View style={styles.rewardInfo}>
+                  <Text style={styles.rewardTitle}>{reward.title}</Text>
+                  <View style={styles.rewardCostContainer}>
+                    <Ionicons name="star" size={14} color="#FFC107" />
+                    <Text style={styles.rewardCost}>{reward.cost} points</Text>
+                    {reward.maxRedemptions && (
+                      <Text style={styles.maxRedemptions}>
+                        • {reward.maxRedemptions - (reward.redeemedBy?.length || 0)} left
+                      </Text>
+                    )}
+                  </View>
+                </View>
+                <Ionicons 
+                  name={isParent ? "chevron-forward" : "download-outline"} 
+                  size={20} 
+                  color="#999" 
+                />
+              </TouchableOpacity>
+            ))
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="gift-outline" size={40} color="#ddd" />
+              <Text style={styles.emptyStateText}>
+                {isParent 
+                  ? 'No active rewards. Tap + to create one!'
+                  : 'No rewards available right now. Check back later!'
+                }
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={[styles.card, { marginTop: 16 }]}>
           <View style={styles.cardHeader}>
             <Ionicons name="checkmark-circle-outline" size={20} color="#2196F3" />
-            <Text style={styles.cardTitle}>Redeemed Rewards</Text>
+            <Text style={styles.cardTitle}>
+              {isParent ? 'Inactive Rewards' : 'Redeemed Rewards'}
+            </Text>
           </View>
           
           {redeemedRewards.length > 0 ? (
             redeemedRewards.map(reward => (
-              <View key={reward.id} style={[styles.rewardItem, { opacity: 0.6 }]}>
-                <View style={[styles.rewardIcon, { backgroundColor: '#E3F2FD' }]}>
-                  <Ionicons name="checkmark-circle" size={20} color="#2196F3" />
+              <TouchableOpacity 
+                key={reward.id} 
+                style={[styles.rewardItem, !isParent && { opacity: 0.6 }]}
+                onPress={() => isParent && navigation.navigate('RewardDetails', { rewardId: reward.id })}
+              >
+                <View style={[styles.rewardIcon, { backgroundColor: isParent ? '#E8F5E9' : '#E3F2FD' }]}>
+                  <Ionicons 
+                    name={isParent ? 'eye-outline' : 'checkmark-circle'} 
+                    size={20} 
+                    color={isParent ? '#4CAF50' : '#2196F3'} 
+                  />
                 </View>
                 <View style={styles.rewardInfo}>
                   <Text style={styles.rewardTitle}>{reward.title}</Text>
-                  <Text style={styles.redeemedText}>{reward.date}</Text>
+                  {isParent ? (
+                    <Text style={styles.redeemedText}>
+                      {reward.redeemedBy?.length || 0} {reward.redeemedBy?.length === 1 ? 'redemption' : 'redemptions'}
+                      {reward.maxRedemptions && ` • Max ${reward.maxRedemptions}`}
+                    </Text>
+                  ) : (
+                    <Text style={styles.redeemedText}>
+                      Redeemed on {new Date(reward.createdAt).toLocaleDateString()}
+                    </Text>
+                  )}
                 </View>
-              </View>
+                {isParent && <Ionicons name="chevron-forward" size={20} color="#999" />}
+              </TouchableOpacity>
             ))
           ) : (
             <View style={styles.emptyState}>
               <Ionicons name="gift-outline" size={40} color="#ddd" />
-              <Text style={styles.emptyStateText}>No rewards redeemed yet</Text>
+              <Text style={styles.emptyStateText}>
+                {isParent 
+                  ? 'No inactive rewards'
+                  : 'No rewards redeemed yet. Earn points by completing quests!'
+                }
+              </Text>
             </View>
           )}
         </View>
@@ -128,6 +255,15 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     fontWeight: '600',
     color: '#F57F17',
+  },
+  addButton: {
+    marginLeft: 'auto',
+    padding: 8,
+  },
+  maxRedemptions: {
+    fontSize: 12,
+    color: '#757575',
+    marginLeft: 8,
   },
   content: {
     flex: 1,

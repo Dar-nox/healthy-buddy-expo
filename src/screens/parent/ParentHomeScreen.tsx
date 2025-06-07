@@ -101,8 +101,8 @@ const ParentHomeScreen: React.FC<Props> = ({ navigation }) => {
       <Text style={styles.childName} numberOfLines={1} ellipsizeMode="tail">{item.name}</Text>
       <View style={styles.childStats}>
         <View style={styles.statItem}>
-          <Text style={styles.statValue}>{item.coins}</Text>
-          <Text style={styles.statLabel}>Coins</Text>
+          <Text style={styles.statValue}>{item.points || 0}</Text>
+          <Text style={styles.statLabel}>Points</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>

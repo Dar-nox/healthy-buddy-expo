@@ -19,11 +19,12 @@ const QuestsScreen = require('../screens/QuestsScreen').default;
 const RewardsScreen = require('../screens/RewardsScreen').default;
 import ParentProfileScreen from '../screens/parent/ParentProfileScreen';
 import ChildProfileScreen from '../screens/child/ChildProfileScreen';
-const CreateQuestScreen = require('../screens/parent/CreateQuestScreen').default;
+import CreateQuestScreen from '../screens/parent/CreateQuestScreen';
+import AddRewardScreen from '../screens/parent/AddRewardScreen';
 const QuestDetailsScreen = require('../screens/QuestDetailsScreen').default;
 
 // Context
-const useAuth = require('../context/AuthContext').useAuth;
+import { useAuth } from '../context/AuthContext';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -145,12 +146,26 @@ const Navigation = () => {
 
   // Helper function to get initial route name based on auth state
   const getInitialRouteName = () => {
-    if (!user) return 'ModeSelection';
-    if (user.type === 'parent') return 'ParentTabs';
-    // If we have a child profile, go directly to child tabs
-    if (childProfile) return 'ChildTabs';
-    // Otherwise, go to child login
-    return 'ChildLogin';
+    console.log('Getting initial route for user:', user?.id, 'type:', user?.type);
+    console.log('Child profile exists:', !!childProfile);
+    
+    if (!user) {
+      console.log('No user, going to ModeSelection');
+      return 'ModeSelection';
+    }
+    
+    if (user.type === 'parent') {
+      console.log('Parent user, going to ParentTabs');
+      return 'ParentTabs';
+    }
+    
+    if (user.type === 'child') {
+      console.log('Child user, going to ChildTabs');
+      return 'ChildTabs';
+    }
+    
+    console.log('Default case, going to ModeSelection');
+    return 'ModeSelection';
   };
   
   // Set up navigation reference
@@ -178,7 +193,6 @@ const Navigation = () => {
           component={ModeSelectionScreen} 
           options={{
             animationTypeForReplace: !user ? 'pop' : 'push',
-            // Prevent going back if not authenticated
             gestureEnabled: false,
           }}
         />
@@ -186,7 +200,6 @@ const Navigation = () => {
           name="ParentAuth" 
           component={ParentAuthScreen} 
           options={{
-            // Only allow going back if user is not authenticated
             gestureEnabled: !user,
           }}
         />
@@ -194,9 +207,7 @@ const Navigation = () => {
           name="ChildLogin" 
           component={ChildLoginScreen}
           options={{
-            // Only allow going back to mode selection
             gestureEnabled: false,
-            // Prevent going back if already logged in as a child
             headerLeft: () => null,
           }}
         />
@@ -204,29 +215,51 @@ const Navigation = () => {
           name="ChildSelection" 
           component={ChildSelectionScreen}
           options={{
-            // Only allow going back to mode selection
             gestureEnabled: false,
           }}
         />
         
-        {/* Main App Screens - Protected Routes */}
+        {/* Parent Flow */}
         <Stack.Screen 
           name="ParentTabs" 
-          component={ParentDrawerNavigator} 
-          options={{
-            gestureEnabled: false,
-          }}
-        />
-        <Stack.Screen 
-          name="ChildTabs" 
-          component={ChildTabNavigator} 
+          component={ParentDrawerNavigator}
           options={{
             gestureEnabled: false,
           }}
         />
         
-        {/* Common screens */}
-        <Stack.Screen name="QuestDetails" component={QuestDetailsScreen} />
+        {/* Child Flow */}
+        <Stack.Screen 
+          name="ChildTabs" 
+          component={ChildTabNavigator}
+          options={{
+            gestureEnabled: false,
+          }}
+        />
+        
+        {/* Common Screens */}
+        <Stack.Screen 
+          name="CreateQuest" 
+          component={CreateQuestScreen}
+          options={{
+            gestureEnabled: true,
+          }}
+        />
+        <Stack.Screen 
+          name="AddReward" 
+          component={AddRewardScreen}
+          options={{
+            gestureEnabled: true,
+            title: 'Create Reward',
+          }}
+        />
+        <Stack.Screen 
+          name="QuestDetails" 
+          component={QuestDetailsScreen}
+          options={{
+            gestureEnabled: true,
+          }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

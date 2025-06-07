@@ -12,6 +12,7 @@ import {
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
+import { useAuth } from '../../context/AuthContext';
 import { RootStackParamList } from '../../types/navigation';
 
 type CreateQuestScreenNavigationProp = StackNavigationProp<RootStackParamList, 'CreateQuest'>;
@@ -44,7 +45,9 @@ const CreateQuestScreen: React.FC<Props> = ({ navigation }) => {
     { label: 'Hard', value: 'Hard' },
   ];
 
-  const handleCreateQuest = () => {
+  const { createQuest, user } = useAuth();
+
+  const handleCreateQuest = async () => {
     if (!title.trim()) {
       Alert.alert('Error', 'Please enter a title for the quest');
       return;
@@ -57,20 +60,61 @@ const CreateQuestScreen: React.FC<Props> = ({ navigation }) => {
 
     setIsLoading(true);
     
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const xpValue = parseInt(xp) || 10;
+      const coinValue = Math.floor(xpValue / 2);
+      
+      // Get all children IDs if this is a parent
+      const assignedTo = user?.type === 'parent' && user.children 
+        ? user.children.map(child => child.id) 
+        : [];
+      
+      console.log('Creating quest with values:', {
+        title: title.trim(),
+        description: description.trim(),
+        xpReward: xpValue,
+        coinReward: coinValue,
+        category: category.toLowerCase(),
+        assignedTo,
+        createdBy: user?.id || 'parent',
+        isCustom: true,
+        proofRequired: false,
+        proofType: 'none',
+      });
+      
+      const success = await createQuest({
+        title: title.trim(),
+        description: description.trim(),
+        xpReward: xpValue,
+        coinReward: coinValue,
+        category: category.toLowerCase() as any,
+        assignedTo, // Assign to all children by default
+        createdBy: user?.id || 'parent',
+        isCustom: true,
+        proofRequired: false,
+        proofType: 'none',
+      });
+
+      if (success) {
+        Alert.alert(
+          'Quest Created',
+          'Your quest has been created successfully!',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ]
+        );
+      } else {
+        throw new Error('Failed to create quest');
+      }
+    } catch (error) {
+      console.error('Error creating quest:', error);
+      Alert.alert('Error', 'Failed to create quest. Please try again.');
+    } finally {
       setIsLoading(false);
-      Alert.alert(
-        'Quest Created',
-        'Your quest has been created successfully!',
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ]
-      );
-    }, 1500);
+    }
   };
 
   return (

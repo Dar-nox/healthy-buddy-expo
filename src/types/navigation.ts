@@ -9,8 +9,10 @@ export type RootStackParamList = {
   QuestDetails: { questId: string };
   Quests: undefined;
   Rewards: undefined;
+  AddReward: undefined;
   ParentProfile: undefined;
   ChildProfile: undefined;
+  RewardDetails: { rewardId: string };
 };
 
 // This helps with type checking and auto-completion for navigation props

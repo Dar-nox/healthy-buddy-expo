@@ -88,13 +88,13 @@ const ChildHomeScreen: React.FC<Props> = ({ navigation }) => {
           
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{childProfile.xp}</Text>
+              <Text style={styles.statValue}>{Number(childProfile.xp || 0)}</Text>
               <Text style={styles.statLabel}>XP</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{childProfile.coins}</Text>
-              <Text style={styles.statLabel}>Coins</Text>
+              <Text style={styles.statValue}>{Number(childProfile.points || 0)}</Text>
+              <Text style={styles.statLabel}>Points</Text>
             </View>
           </View>
         </View>

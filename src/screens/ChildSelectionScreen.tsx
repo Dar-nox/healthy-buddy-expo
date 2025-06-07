@@ -12,12 +12,14 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Clipboard
+  Clipboard,
+  GestureResponderEvent
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
-import { RootStackParamList } from '../navigation';
+import { ChildProfile } from '../types';
+import { RootStackParamList } from '../types/navigation';
 import { generateAccessCode } from '../utils/authUtils';
 
 // Mock avatars for children
@@ -40,11 +42,34 @@ interface NewChildForm {
 
 const ChildSelectionScreen: React.FC<Props> = ({ navigation }) => {
   const { user, childProfile, selectChild, logout, updateUser } = useAuth();
-  const [children, setChildren] = useState<Array<{ id: string; name: string; avatar: string }>>([]);
+  // Initialize children with proper type and default values
+  const [children, setChildren] = useState<ChildProfile[]>(() => {
+    if (!user?.children) return [];
+    return user.children.map(child => {
+      // Create a new object with all required ChildProfile properties
+      const defaultChild: ChildProfile = {
+        id: child.id,
+        name: child.name,
+        email: child.email || `${child.name.toLowerCase().replace(/\s+/g, '.')}@example.com`,
+        password: child.password || 'password',
+        type: 'child',
+        level: child.level || 1,
+        xp: child.xp || 0,
+        points: child.points || 0,
+        avatar: child.avatar || CHILD_AVATARS[Math.floor(Math.random() * CHILD_AVATARS.length)],
+        accessCode: child.accessCode || '',
+        completedQuests: child.completedQuests || [],
+        redeemedRewards: child.redeemedRewards || [],
+        parentId: child.parentId || user.id,
+        createdAt: child.createdAt || new Date().toISOString()
+      };
+      return defaultChild;
+    });
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [isManageModalVisible, setIsManageModalVisible] = useState(false);
-  const [selectedChild, setSelectedChild] = useState<{id: string; name: string; avatar: string; accessCode: string} | null>(null);
+  const [selectedChild, setSelectedChild] = useState<ChildProfile | null>(null);
   const [newChild, setNewChild] = useState<NewChildForm>({
     name: '',
     avatar: CHILD_AVATARS[Math.floor(Math.random() * CHILD_AVATARS.length)],
@@ -59,9 +84,22 @@ const ChildSelectionScreen: React.FC<Props> = ({ navigation }) => {
     const loadChildren = async () => {
       if (user?.children && user.children.length > 0) {
         const formattedChildren = user.children.map((child, index) => ({
+          ...child,
+          // Ensure all required fields have default values
           id: child.id,
           name: child.name,
+          level: child.level || 1,
+          xp: child.xp || 0,
+          points: child.points || 0,
           avatar: child.avatar || CHILD_AVATARS[index % CHILD_AVATARS.length],
+          accessCode: child.accessCode || '',
+          completedQuests: child.completedQuests || [],
+          redeemedRewards: child.redeemedRewards || [],
+          parentId: child.parentId || user.id,
+          createdAt: child.createdAt || new Date().toISOString(),
+          email: child.email || `${child.name.toLowerCase().replace(/\s+/g, '.')}@example.com`,
+          password: child.password || 'password',
+          type: 'child' as const
         }));
         setChildren(formattedChildren);
       }
@@ -71,7 +109,7 @@ const ChildSelectionScreen: React.FC<Props> = ({ navigation }) => {
     loadChildren();
   }, [user]);
 
-  const handleSelectChild = (child: {id: string; name: string; avatar: string; accessCode: string}) => {
+  const handleSelectChild = (child: ChildProfile) => {
     // Ensure accessCode is always a string
     const childWithAccessCode = {
       ...child,
@@ -80,6 +118,18 @@ const ChildSelectionScreen: React.FC<Props> = ({ navigation }) => {
     setSelectedChild(childWithAccessCode);
     setEditName(child.name);
     setIsEditing(false);
+    setIsManageModalVisible(true);
+  };
+
+  const handleEditChild = (child: ChildProfile) => {
+    // Ensure accessCode is always a string
+    const childWithAccessCode = {
+      ...child,
+      accessCode: child.accessCode || ''
+    };
+    setSelectedChild(childWithAccessCode);
+    setEditName(child.name);
+    setIsEditing(true);
     setIsManageModalVisible(true);
   };
 
@@ -108,16 +158,19 @@ const ChildSelectionScreen: React.FC<Props> = ({ navigation }) => {
       
       console.log('Creating new child profile with access code:', newChild.accessCode);
       
-      const newChildProfile = {
+      const newChildProfile: ChildProfile = {
         id: `child-${Date.now()}`,
         name: newChild.name.trim(),
+        email: `${newChild.name.trim().toLowerCase().replace(/\s+/g, '.')}@example.com`,
+        password: 'password',
+        type: 'child',
         avatar: newChild.avatar,
         level: 1,
         xp: 0,
-        coins: 10,
-        accessCode: newChild.accessCode,
+        points: 10, // Starting points for new child
+        accessCode: newChild.accessCode || '',
         completedQuests: [],
-        inventory: [],
+        redeemedRewards: [],
         parentId: user.id,
         createdAt: new Date().toISOString()
       };
@@ -135,11 +188,7 @@ const ChildSelectionScreen: React.FC<Props> = ({ navigation }) => {
       console.log('User updated successfully');
       
       // Update local state
-      setChildren(prev => [...prev, {
-        id: newChildProfile.id,
-        name: newChildProfile.name,
-        avatar: newChildProfile.avatar
-      }]);
+      setChildren(prev => [...prev, newChildProfile]);
       
       // Reset form and close modal
       setNewChild({
@@ -177,7 +226,13 @@ const ChildSelectionScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  const renderChildItem = ({ item }: { item: { id: string; name: string; avatar: string } }) => {
+  const handleCopyAccessCode = (event: GestureResponderEvent, child: ChildProfile) => {
+    event.stopPropagation();
+    Clipboard.setString(child.accessCode || '');
+    Alert.alert('Copied!', 'Access code copied to clipboard');
+  };
+
+  const renderChildItem = ({ item }: { item: ChildProfile }) => {
     // Find the full child data including access code
     const fullChild = user?.children?.find(child => child.id === item.id);
     
@@ -190,7 +245,7 @@ const ChildSelectionScreen: React.FC<Props> = ({ navigation }) => {
         })}
         disabled={isLoading}
       >
-        <View style={styles.avatarContainer}>
+        <View style={styles.childAvatarContainer}>
           <Text style={styles.avatarText}>{item.avatar}</Text>
         </View>
         <Text style={styles.childName}>{item.name}</Text>
@@ -246,18 +301,18 @@ const ChildSelectionScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  const handleDeleteChild = async () => {
-    if (!selectedChild || !user) return;
+  const handleDeleteChild = async (child: ChildProfile) => {
+    if (!child || !user) return;
 
     try {
       const updatedUser = {
         ...user,
-        children: user.children?.filter(child => child.id !== selectedChild.id) || []
+        children: user.children?.filter(c => c.id !== child.id) || []
       };
       
       if (user.id) {
         await updateUser(updatedUser);
-        setChildren(prev => prev.filter(child => child.id !== selectedChild.id));
+        setChildren(prev => prev.filter(c => c.id !== child.id));
         setIsManageModalVisible(false);
       }
     } catch (error) {
@@ -339,7 +394,7 @@ const ChildSelectionScreen: React.FC<Props> = ({ navigation }) => {
                 
                 <TouchableOpacity 
                   style={[styles.actionButton, styles.deleteButton]}
-                  onPress={handleDeleteChild}
+                  onPress={() => selectedChild && handleDeleteChild(selectedChild)}
                 >
                   <Ionicons name="trash" size={16} color="#fff" />
                   <Text style={styles.actionButtonText}>Delete</Text>
@@ -379,7 +434,7 @@ const ChildSelectionScreen: React.FC<Props> = ({ navigation }) => {
             <ScrollView 
               horizontal 
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.avatarContainer}
+              contentContainerStyle={styles.avatarOptionsContainer}
             >
               {CHILD_AVATARS.map((avatar, index) => renderAvatarOption(avatar, index))}
             </ScrollView>
@@ -491,7 +546,7 @@ const ChildSelectionScreen: React.FC<Props> = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  // Modal styles
+  // Modal container styles
   modalContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -512,17 +567,19 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#2E7D32',
+    marginBottom: 20,
+    textAlign: 'center',
   },
   modalBody: {
     paddingVertical: 10,
   },
   modalButtons: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 20,
+    justifyContent: 'space-between',
+    marginTop: 24,
   },
   
   // Manage Child Modal
@@ -597,14 +654,6 @@ const styles = StyleSheet.create({
     marginLeft: 5,
     fontWeight: '500',
   },
-  accessCodeBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    padding: 15,
-    borderRadius: 8,
-    marginTop: 5,
-  },
   // Access Code styles
   accessCodeContainer: {
     marginTop: 15,
@@ -653,7 +702,7 @@ const styles = StyleSheet.create({
     padding: 5,
   },
   
-  // Modal styles
+  // Modal overlay styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -663,20 +712,6 @@ const styles = StyleSheet.create({
   },
   keyboardAvoidingView: {
     width: '100%',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 24,
-    width: '100%',
-    maxWidth: 400,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#2E7D32',
-    marginBottom: 20,
-    textAlign: 'center',
   },
   label: {
     fontSize: 16,
@@ -693,7 +728,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
   },
-  avatarContainer: {
+  avatarOptionsContainer: {
     flexDirection: 'row',
     paddingVertical: 10,
   },
@@ -711,11 +746,6 @@ const styles = StyleSheet.create({
   selectedAvatar: {
     borderColor: '#4CAF50',
     backgroundColor: '#C8E6C9',
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 24,
   },
   modalButton: {
     flex: 1,
@@ -798,7 +828,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  avatarContainer: {
+  childAvatarContainer: {
     width: 50,
     height: 50,
     borderRadius: 25,

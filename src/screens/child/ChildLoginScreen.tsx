@@ -59,7 +59,7 @@ const ChildLoginScreen: React.FC<Props> = ({ navigation }) => {
                   avatar: "👦🏻",
                   level: 1,
                   xp: 0,
-                  coins: 10,
+                  points: 10,
                   accessCode: "P6WH-57H4",
                   completedQuests: [],
                   inventory: [],
@@ -107,14 +107,22 @@ const ChildLoginScreen: React.FC<Props> = ({ navigation }) => {
       const success = await loginAsChild(accessCode.trim().toUpperCase(), selectedAvatar);
       
       if (success) {
-        console.log('Login successful, navigating to child tabs...');
-        // Navigate to the child tabs after a short delay to allow state to update
-        setTimeout(() => {
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'ChildTabs' }],
-          });
-        }, 100);
+        console.log('Login successful, preparing navigation to child tabs...');
+        
+        // Small delay to ensure state is updated
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Reset the navigation stack completely
+        navigation.reset({
+          index: 0,
+          routes: [{ 
+            name: 'ChildTabs',
+            params: { 
+              screen: 'Home',
+              params: { refresh: true } 
+            } 
+          }],
+        });
       } else {
         console.log('Login failed: Invalid access code');
         Alert.alert('Error', 'Invalid access code. Please check and try again.');

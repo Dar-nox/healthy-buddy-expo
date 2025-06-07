@@ -6,22 +6,27 @@ export type User = {
   type: 'parent' | 'child';
   children?: ChildProfile[];
   avatar?: string;
+  points?: number;
+  level?: number;
+  xp?: number;
+  accessCode?: string;
+  completedQuests?: string[];
+  redeemedRewards?: string[];
+  parentId?: string; // Only present for child users, references the parent's user ID
   createdAt: string;
 };
 
-export type ChildProfile = {
-  id: string;
-  name: string;
+export interface ChildProfile extends User {
+  parentId: string;
+  points: number;
   level: number;
   xp: number;
-  coins: number;
   avatar: string;
   accessCode: string;
   completedQuests: string[];
-  inventory: InventoryItem[];
-  parentId: string;
-  createdAt: string;
-};
+  redeemedRewards: string[];
+  inventory?: string[]; // Optional for backward compatibility
+}
 
 export type InventoryItem = {
   id: string;
@@ -76,14 +81,19 @@ export type LeaderboardEntry = {
 
 export type Reward = {
   id: string;
-  name: string;
+  title: string;
   description: string;
   cost: number;
-  type: 'avatar' | 'background' | 'item' | 'badge';
-  image: string;
-  unlocked: boolean;
-  category: 'common' | 'rare' | 'epic' | 'legendary';
-  requiredLevel: number;
+  type: 'physical' | 'privilege' | 'virtual';
+  icon: string;
+  isActive: boolean;
+  createdBy: string; // Parent user ID who created the reward
+  createdAt: string;
+  redeemedBy?: string[]; // Array of child user IDs who have redeemed this reward
+  maxRedemptions?: number; // Maximum number of times this reward can be redeemed (optional)
+  category: 'home' | 'entertainment' | 'food' | 'other';
+  isGlobal: boolean; // If true, available to all children; if false, assigned to specific children
+  assignedTo?: string[]; // Array of child user IDs this reward is assigned to (if not global)
 };
 
 export type Notification = {

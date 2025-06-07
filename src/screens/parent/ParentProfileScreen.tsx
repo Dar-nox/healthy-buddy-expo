@@ -12,7 +12,7 @@ type Props = {
 };
 
 const ParentProfileScreen: React.FC<Props> = ({ navigation }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, cleanupTestData } = useAuth();
   
   const menuItems = [
     { icon: 'person-outline', label: 'Edit Profile', screen: 'EditProfile' },
@@ -21,7 +21,18 @@ const ParentProfileScreen: React.FC<Props> = ({ navigation }) => {
     { icon: 'settings-outline', label: 'Settings', screen: 'Settings' },
     { icon: 'help-circle-outline', label: 'Help & Support', screen: 'Help' },
     { icon: 'information-circle-outline', label: 'About', screen: 'About' },
-    { icon: 'log-out-outline', label: 'Logout', screen: 'Logout' },
+    { 
+      icon: 'trash-outline', 
+      label: 'Clean Up Data', 
+      screen: 'CleanupData',
+      isWarning: true // Flag for special styling
+    },
+    { 
+      icon: 'log-out-outline', 
+      label: 'Logout', 
+      screen: 'Logout',
+      isWarning: true // Flag for special styling
+    },
   ];
 
   const handleLogout = async () => {
@@ -85,13 +96,43 @@ const ParentProfileScreen: React.FC<Props> = ({ navigation }) => {
                   );
                 } else if (item.screen === 'ChildSelection') {
                   navigation.navigate('ChildSelection');
+                } else if (item.screen === 'CleanupData') {
+                  Alert.alert(
+                    'Clean Up Data',
+                    'This will remove any orphaned quests and fix data issues. Continue?',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { 
+                        text: 'Clean Up', 
+                        onPress: async () => {
+                          try {
+                            await cleanupTestData();
+                            Alert.alert('Success', 'Data cleanup completed successfully!');
+                          } catch (error) {
+                            console.error('Cleanup error:', error);
+                            Alert.alert('Error', 'Failed to clean up data. Please try again.');
+                          }
+                        },
+                        style: 'destructive' 
+                      },
+                    ]
+                  );
                 }
                 // Add other navigation handlers as needed
               }}
             >
               <View style={styles.menuItemLeft}>
-                <Ionicons name={item.icon as any} size={22} color="#555" />
-                <Text style={styles.menuItemText}>{item.label}</Text>
+                <Ionicons 
+                  name={item.icon as any} 
+                  size={22} 
+                  color={item.isWarning ? '#e74c3c' : '#555'} 
+                />
+                <Text style={[
+                  styles.menuItemText,
+                  item.isWarning && styles.warningText
+                ]}>
+                  {item.label}
+                </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#999" />
             </TouchableOpacity>
@@ -197,6 +238,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
     marginLeft: 16,
+  },
+  warningText: {
+    color: '#e74c3c',
+    fontWeight: '500',
   },
 });
 
