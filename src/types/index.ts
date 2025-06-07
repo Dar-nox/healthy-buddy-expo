@@ -10,23 +10,75 @@ export type User = {
   level?: number;
   xp?: number;
   accessCode?: string;
-  completedQuests?: string[];
-  redeemedRewards?: string[];
+  completedQuests?: (CompletedQuest | string)[]; // Support both old (string) and new (object) types during migration
+  redeemedRewards?: (RedeemedReward | string)[]; // Support both old (string) and new (object) types during migration
   parentId?: string; // Only present for child users, references the parent's user ID
   createdAt: string;
 };
 
-export interface ChildProfile extends User {
+// Helper type to normalize quest/reward data
+type NormalizedArray<T extends object> = (T | string)[];
+
+export interface CompletedQuest {
+  id: string;
+  title: string;
+  completedAt: string;
+  pointsEarned: number;
+  category: string;
+}
+
+export interface RedeemedReward {
+  id: string;
+  name: string;
+  cost: number;
+  redeemedAt: string;
+  category: string;
+}
+
+// Helper function type to normalize quest/reward data
+type NormalizeFunction<T extends object> = (item: T | string) => T;
+
+export interface ChildProfile extends Omit<User, 'completedQuests' | 'redeemedRewards'> {
   parentId: string;
   points: number;
   level: number;
   xp: number;
   avatar: string;
   accessCode: string;
-  completedQuests: string[];
-  redeemedRewards: string[];
+  completedQuests: CompletedQuest[];
+  redeemedRewards: RedeemedReward[];
   inventory?: string[]; // Optional for backward compatibility
 }
+
+// Helper function to normalize quest data
+export const normalizeCompletedQuest = (quest: CompletedQuest | string): CompletedQuest => {
+  if (typeof quest === 'string') {
+    // If it's just a string ID, create a minimal CompletedQuest object
+    return {
+      id: quest,
+      title: 'Completed Quest',
+      completedAt: new Date().toISOString(),
+      pointsEarned: 0,
+      category: 'general'
+    };
+  }
+  return quest;
+};
+
+// Helper function to normalize reward data
+export const normalizeRedeemedReward = (reward: RedeemedReward | string): RedeemedReward => {
+  if (typeof reward === 'string') {
+    // If it's just a string ID, create a minimal RedeemedReward object
+    return {
+      id: reward,
+      name: 'Redeemed Reward',
+      cost: 0,
+      redeemedAt: new Date().toISOString(),
+      category: 'other'
+    };
+  }
+  return reward;
+};
 
 export type InventoryItem = {
   id: string;

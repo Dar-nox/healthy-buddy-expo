@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { StatusBar } from 'react-native';
 import { 
   View, 
   Text, 
@@ -7,19 +8,13 @@ import {
   ScrollView, 
   SafeAreaView, 
   RefreshControl,
-  Alert
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { RootStackParamList } from '../../types/navigation';
-
-// Mock data
-const DAILY_QUESTS = [
-  { id: '1', title: 'Eat a fruit', xp: 10, completed: false },
-  { id: '2', title: 'Drink water', xp: 5, completed: true },
-  { id: '3', title: 'Play outside', xp: 15, completed: false },
-];
 
 type ChildHomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ChildTabs'>;
 
@@ -28,10 +23,35 @@ type Props = {
 };
 
 const ChildHomeScreen: React.FC<Props> = ({ navigation }) => {
-  const { childProfile, logout } = useAuth();
+  const { childProfile, quests, completeQuest, isLoading, logout } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
 
-  const onRefresh = () => {
+  // Filter and sort quests for the child
+  const dailyQuests = useMemo(() => {
+    if (!quests || !Array.isArray(quests)) return [];
+    
+    const now = new Date();
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    
+    return quests
+      .filter(quest => {
+        // Only show quests from parent assigned to this child
+        const isFromParent = quest.createdBy === childProfile?.parentId;
+        const isAssignedToMe = !quest.assignedTo || 
+                             quest.assignedTo.length === 0 || 
+                             (childProfile && quest.assignedTo.includes(childProfile.id));
+        
+        // Only show quests created today
+        const createdAt = new Date(quest.createdAt);
+        const isToday = createdAt >= today;
+        
+        return isFromParent && isAssignedToMe && isToday && !quest.isCompleted;
+      })
+      .sort((a, b) => (a.isCompleted ? 1 : 0) - (b.isCompleted ? 1 : 0));
+  }, [quests, childProfile]);
+
+  const onRefresh = async () => {
     setRefreshing(true);
     // Simulate data refresh
     setTimeout(() => {
@@ -39,28 +59,28 @@ const ChildHomeScreen: React.FC<Props> = ({ navigation }) => {
     }, 1000);
   };
 
-  const handleCompleteQuest = (questId: string) => {
-    // In a real app, this would mark the quest as complete in the backend
-    Alert.alert('Quest Complete!', 'Your parent will verify your completion.');
-  };
-
-  const handleLogout = async () => {
+  const handleCompleteQuest = async (questId: string) => {
     try {
-      await logout();
-      navigation.replace('ModeSelection');
+      const success = await completeQuest(questId);
+      if (success) {
+        Alert.alert('Quest Complete!', `You earned XP and points!`);
+      } else {
+        Alert.alert('Error', 'Failed to complete quest. Please try again.');
+      }
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('Error completing quest:', error);
+      Alert.alert('Error', 'An error occurred while completing the quest.');
     }
   };
 
-  if (!childProfile) {
+  // Remove handleLogout function as it's not needed here
+
+  if (isLoading || !childProfile) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <Text>Loading profile...</Text>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-            <Text style={styles.logoutButtonText}>Back to Mode Selection</Text>
-          </TouchableOpacity>
+          <ActivityIndicator size="large" color="#4CAF50" />
+          <Text style={styles.loadingText}>Loading...</Text>
         </View>
       </SafeAreaView>
     );
@@ -118,39 +138,70 @@ const ChildHomeScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.questsContainer}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Daily Quests</Text>
-            <TouchableOpacity style={styles.seeAllButton}>
+            <TouchableOpacity 
+              style={styles.seeAllButton}
+              onPress={() => navigation.navigate('Quests')}
+            >
               <Text style={styles.seeAllText}>See All</Text>
               <Ionicons name="chevron-forward" size={16} color="#4CAF50" />
             </TouchableOpacity>
           </View>
           
-          {DAILY_QUESTS.map((quest) => (
-            <View key={quest.id} style={styles.questCard}>
-              <View style={styles.questInfo}>
-                <View style={[
-                  styles.questCheckbox,
-                  quest.completed && styles.questCheckboxCompleted
-                ]}>
-                  {quest.completed && (
-                    <Ionicons name="checkmark" size={16} color="#fff" />
+          {dailyQuests.length > 0 ? (
+            dailyQuests.map((quest) => (
+              <View 
+                key={quest.id} 
+                style={[
+                  styles.questCard,
+                  quest.isCompleted && styles.questCardCompleted
+                ]}
+              >
+                <View style={styles.questInfo}>
+                  <TouchableOpacity
+                    style={[
+                      styles.questCheckbox,
+                      quest.isCompleted && styles.questCheckboxCompleted
+                    ]}
+                    onPress={() => !quest.isCompleted && handleCompleteQuest(quest.id)}
+                    disabled={quest.isCompleted}
+                  >
+                    {quest.isCompleted && (
+                      <Ionicons name="checkmark" size={16} color="#fff" />
+                    )}
+                  </TouchableOpacity>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[
+                      styles.questTitle,
+                      quest.isCompleted && styles.questTitleCompleted
+                    ]}>
+                      {quest.title}
+                    </Text>
+                    {quest.description && (
+                      <Text style={styles.questDescription} numberOfLines={1}>
+                        {quest.description}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+                
+                <View style={styles.questXpContainer}>
+                  <Text style={styles.questXpText}>+{quest.xpReward || 10} XP</Text>
+                  {quest.coinReward && quest.coinReward > 0 && (
+                    <View style={styles.coinRewardContainer}>
+                      <Ionicons name="logo-bitcoin" size={16} color="#FFD700" />
+                      <Text style={styles.coinRewardText}>{quest.coinReward}</Text>
+                    </View>
                   )}
                 </View>
-                <Text style={styles.questTitle}>{quest.title}</Text>
               </View>
-              
-              <View style={styles.questXpContainer}>
-                <Text style={styles.questXpText}>+{quest.xp} XP</Text>
-                {!quest.completed && (
-                  <TouchableOpacity 
-                    style={styles.questButton}
-                    onPress={() => handleCompleteQuest(quest.id)}
-                  >
-                    <Text style={styles.questButtonText}>Complete</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+            ))
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="checkmark-done-circle-outline" size={48} color="#ddd" />
+              <Text style={styles.emptyStateText}>No quests for today!</Text>
+              <Text style={styles.emptyStateSubtext}>Check back later for new quests.</Text>
             </View>
-          ))}
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -158,8 +209,30 @@ const ChildHomeScreen: React.FC<Props> = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
+  questCardCompleted: {
+    opacity: 0.7,
+  },
+  emptyState: {
+    alignItems: 'center',
+    padding: 30,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 12,
+    marginTop: 10,
+  },
+  emptyStateText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 4,
+  },
   container: {
     flex: 1,
+    marginTop: StatusBar.currentHeight,
     backgroundColor: '#f5f5f5',
   },
   scrollContent: {
@@ -173,17 +246,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     padding: 20,
   },
-  logoutButton: {
-    marginTop: 20,
-    padding: 12,
-    backgroundColor: '#4CAF50',
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  logoutButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
+  loadingText: {
+    marginTop: 10,
+    color: '#666',
   },
   header: {
     flexDirection: 'row',
@@ -346,32 +411,53 @@ const styles = StyleSheet.create({
   questCheckbox: {
     width: 22,
     height: 22,
-    borderRadius: 6,
+    borderRadius: 11,
     borderWidth: 2,
-    borderColor: '#ddd',
+    borderColor: '#4CAF50',
     marginRight: 12,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  questCheckboxCompleted: {
-    backgroundColor: '#4CAF50',
-    borderColor: '#4CAF50',
   },
   questTitle: {
     fontSize: 14,
     color: '#333',
     fontWeight: '500',
   },
+  questTitleCompleted: {
+    textDecorationLine: 'line-through',
+    color: '#888',
+  },
+  questDescription: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 2,
+  },
+  questCheckboxCompleted: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#4CAF50',
+  },
   questXpContainer: {
-    backgroundColor: '#E8F5E9',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginRight: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  coinRewardContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 8,
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  coinRewardText: {
+    marginLeft: 2,
+    color: '#D4AF37',
+    fontWeight: '600',
+    fontSize: 12,
   },
   questXpText: {
     fontSize: 12,
-    color: '#2E7D32',
+    color: '#4CAF50',
     fontWeight: '600',
   },
   questButton: {

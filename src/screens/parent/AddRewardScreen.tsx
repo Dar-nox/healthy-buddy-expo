@@ -1,11 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  SafeAreaView, 
+  ScrollView, 
+  TouchableOpacity, 
+  TextInput, 
+  Alert, 
+  StatusBar,
+  ActivityIndicator 
+} from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
-import { useAuth } from '../../context/AuthContext';
-import { Reward } from '../../types';
 import { RootStackParamList } from '../../types/navigation';
+import { useAuth } from '../../context/AuthContext';
 
 type AddRewardScreenNavigationProp = StackNavigationProp<RootStackParamList, 'AddReward'>;
 
@@ -13,209 +23,135 @@ type Props = {
   navigation: AddRewardScreenNavigationProp;
 };
 
-const rewardTypes = [
-  { id: 'privilege', name: 'Privilege', icon: 'star-outline' },
-  { id: 'physical', name: 'Physical Item', icon: 'cube-outline' },
-  { id: 'virtual', name: 'Virtual Item', icon: 'gift-outline' },
-];
-
-const rewardCategories = [
-  { id: 'home', name: 'Home' },
-  { id: 'entertainment', name: 'Entertainment' },
-  { id: 'food', name: 'Food' },
-  { id: 'other', name: 'Other' },
-];
-
 const AddRewardScreen: React.FC<Props> = ({ navigation }) => {
-  const { user, children, createReward } = useAuth();
+  const { user } = useAuth();
+  
+  // Temporary function until we add it to AuthContext
+  const addReward = async (reward: any) => {
+    // This is a placeholder - in a real app, this would be implemented in the AuthContext
+    console.log('Adding reward:', reward);
+    // In a real implementation, this would update the rewards in AsyncStorage
+    // and update the context state
+  };
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [cost, setCost] = useState('');
-  const [type, setType] = useState<Reward['type']>('privilege');
-  const [category, setCategory] = useState<Reward['category']>('home');
-  const [isGlobal, setIsGlobal] = useState(true);
-  const [maxRedemptions, setMaxRedemptions] = useState('');
-  const [selectedChildren, setSelectedChildren] = useState<string[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [category, setCategory] = useState('home');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const toggleChildSelection = (childId: string) => {
-    if (selectedChildren.includes(childId)) {
-      setSelectedChildren(selectedChildren.filter(id => id !== childId));
-    } else {
-      setSelectedChildren([...selectedChildren, childId]);
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!title.trim() || !description.trim() || !cost || isNaN(Number(cost)) || Number(cost) <= 0) {
-      Alert.alert('Error', 'Please fill in all required fields with valid values');
+  const handleAddReward = async () => {
+    if (!title.trim() || !cost) {
+      Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
 
-    if (!isGlobal && selectedChildren.length === 0) {
-      Alert.alert('Error', 'Please select at least one child or make the reward global');
+    if (isNaN(Number(cost)) || Number(cost) <= 0) {
+      Alert.alert('Error', 'Please enter a valid cost');
       return;
     }
 
-    setIsSubmitting(true);
     try {
-      const newReward: Omit<Reward, 'id' | 'createdAt' | 'redeemedBy' | 'isActive'> = {
+      setIsLoading(true);
+      await addReward({
+        id: Date.now().toString(),
         title: title.trim(),
         description: description.trim(),
         cost: Number(cost),
-        type,
         category,
+        isActive: true,
         createdBy: user?.id || '',
-        isGlobal,
-        assignedTo: isGlobal ? undefined : selectedChildren,
-        maxRedemptions: maxRedemptions ? Number(maxRedemptions) : undefined,
-        icon: rewardTypes.find(t => t.id === type)?.icon || 'gift-outline',
-      };
-
-      const success = await createReward(newReward);
+        createdAt: new Date().toISOString(),
+        icon: 'gift',
+        type: 'physical'
+      });
       
-      if (success) {
-        Alert.alert('Success', 'Reward created successfully!', [
-          { text: 'OK', onPress: () => navigation.goBack() }
-        ]);
-      } else {
-        throw new Error('Failed to create reward');
-      }
+      Alert.alert('Success', 'Reward added successfully', [
+        { text: 'OK', onPress: () => navigation.goBack() }
+      ]);
     } catch (error) {
-      console.error('Error creating reward:', error);
-      Alert.alert('Error', 'Failed to create reward. Please try again.');
+      console.error('Error adding reward:', error);
+      Alert.alert('Error', 'Failed to add reward. Please try again.');
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f5f5f5" />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Create Reward</Text>
+        <Text style={styles.headerTitle}>Add New Reward</Text>
         <View style={{ width: 24 }} />
       </View>
 
       <ScrollView style={styles.content}>
-        <View style={styles.card}>
+        <View style={styles.formGroup}>
           <Text style={styles.label}>Reward Title *</Text>
           <TextInput
             style={styles.input}
+            placeholder="Enter reward title"
             value={title}
             onChangeText={setTitle}
-            placeholder="E.g., Extra 30 minutes of screen time"
             placeholderTextColor="#999"
           />
+        </View>
 
-          <Text style={styles.label}>Description *</Text>
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Description</Text>
           <TextInput
-            style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
+            style={[styles.input, styles.textArea]}
+            placeholder="Enter reward description"
             value={description}
             onChangeText={setDescription}
-            placeholder="Describe the reward in detail..."
-            placeholderTextColor="#999"
             multiline
+            numberOfLines={3}
+            placeholderTextColor="#999"
           />
+        </View>
 
-          <Text style={styles.label}>Cost (points) *</Text>
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Cost (Points) *</Text>
           <TextInput
             style={styles.input}
+            placeholder="Enter cost in points"
             value={cost}
             onChangeText={setCost}
-            placeholder="Enter coin cost"
+            keyboardType="numeric"
             placeholderTextColor="#999"
-            keyboardType="number-pad"
           />
+        </View>
 
-          <Text style={styles.label}>Type *</Text>
-          <View style={styles.pickerContainer}>
-            <Picker
-              selectedValue={type}
-              onValueChange={(value) => setType(value)}
-              style={styles.picker}
-            >
-              {rewardTypes.map((rewardType) => (
-                <Picker.Item key={rewardType.id} label={rewardType.name} value={rewardType.id} />
-              ))}
-            </Picker>
-          </View>
-
-          <Text style={styles.label}>Category *</Text>
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Category</Text>
           <View style={styles.pickerContainer}>
             <Picker
               selectedValue={category}
-              onValueChange={(value) => setCategory(value as Reward['category'])}
+              onValueChange={(itemValue) => setCategory(itemValue)}
               style={styles.picker}
             >
-              {rewardCategories.map((cat) => (
-                <Picker.Item key={cat.id} label={cat.name} value={cat.id} />
-              ))}
+              <Picker.Item label="Home" value="home" />
+              <Picker.Item label="Entertainment" value="entertainment" />
+              <Picker.Item label="Food" value="food" />
+              <Picker.Item label="Other" value="other" />
             </Picker>
           </View>
-
-          <View style={styles.switchContainer}>
-            <Text style={styles.switchLabel}>Available to all children</Text>
-            <TouchableOpacity
-              style={[styles.switch, isGlobal ? styles.switchActive : null]}
-              onPress={() => setIsGlobal(!isGlobal)}
-            >
-              <View style={[styles.switchToggle, isGlobal ? styles.switchToggleActive : null]} />
-            </TouchableOpacity>
-          </View>
-
-          {!isGlobal && (
-            <View style={styles.childrenContainer}>
-              <Text style={styles.label}>Select Children</Text>
-              {children.map((child) => (
-                <TouchableOpacity
-                  key={child.id}
-                  style={styles.childItem}
-                  onPress={() => toggleChildSelection(child.id)}
-                >
-                  <View style={styles.checkboxContainer}>
-                    <View
-                      style={[
-                        styles.checkbox,
-                        selectedChildren.includes(child.id) && styles.checkboxSelected,
-                      ]}
-                    >
-                      {selectedChildren.includes(child.id) && (
-                        <Ionicons name="checkmark" size={16} color="#fff" />
-                      )}
-                    </View>
-                  </View>
-                  <Text style={styles.childName}>{child.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          <Text style={styles.label}>Max Redemptions (optional)</Text>
-          <TextInput
-            style={styles.input}
-            value={maxRedemptions}
-            onChangeText={setMaxRedemptions}
-            placeholder="Leave empty for unlimited"
-            placeholderTextColor="#999"
-            keyboardType="number-pad"
-          />
         </View>
-      </ScrollView>
 
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={[styles.button, isSubmitting && styles.buttonDisabled]}
-          onPress={handleSubmit}
-          disabled={isSubmitting}
+        <TouchableOpacity 
+          style={[styles.button, isLoading && styles.buttonDisabled]} 
+          onPress={handleAddReward}
+          disabled={isLoading}
         >
-          <Text style={styles.buttonText}>
-            {isSubmitting ? 'Creating...' : 'Create Reward'}
-          </Text>
+          {isLoading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Add Reward</Text>
+          )}
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -224,11 +160,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+    marginTop: StatusBar.currentHeight,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
@@ -243,117 +180,48 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+  formGroup: {
+    marginBottom: 20,
   },
   label: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: '500',
+    color: '#444',
     marginBottom: 8,
-    marginTop: 12,
   },
   input: {
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#fff',
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
     color: '#333',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: '#ddd',
+  },
+  textArea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
   },
   pickerContainer: {
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    backgroundColor: '#fff',
     borderRadius: 8,
-    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
     overflow: 'hidden',
   },
   picker: {
-    backgroundColor: '#f9f9f9',
-  },
-  switchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginVertical: 16,
-  },
-  switchLabel: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
-  },
-  switch: {
-    width: 50,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#e0e0e0',
-    padding: 2,
-    justifyContent: 'center',
-  },
-  switchActive: {
-    backgroundColor: '#4CAF50',
-  },
-  switchToggle: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: '#fff',
-  },
-  switchToggleActive: {
-    transform: [{ translateX: 20 }],
-  },
-  childrenContainer: {
-    marginTop: 8,
-  },
-  childItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  checkboxContainer: {
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkboxSelected: {
-    backgroundColor: '#4CAF50',
-    borderColor: '#4CAF50',
-  },
-  childName: {
-    fontSize: 16,
-    color: '#333',
-  },
-  footer: {
-    padding: 16,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
+    height: 50,
   },
   button: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#4A90E2',
     borderRadius: 8,
     padding: 16,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
   },
   buttonDisabled: {
-    backgroundColor: '#a5d6a7',
+    backgroundColor: '#A0C4FF',
   },
   buttonText: {
     color: '#fff',

@@ -1,7 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { User, ChildProfile, Quest, Reward } from '../types';
+import { 
+  User, 
+  ChildProfile, 
+  Quest, 
+  Reward, 
+  normalizeCompletedQuest, 
+  normalizeRedeemedReward 
+} from '../types';
 
 interface AuthContextType {
   user: User | null;
@@ -470,6 +477,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         console.log('[syncChildToParent] Existing child data:', JSON.stringify(existingChild, null, 2));
         
+        // Normalize the quest and reward data
+        const normalizedCompletedQuests = [
+          ...(childData.completedQuests || []),
+          ...(existingChild?.completedQuests || [])
+        ].map(normalizeCompletedQuest);
+        
+        const normalizedRedeemedRewards = [
+          ...(childData.redeemedRewards || []),
+          ...(existingChild?.redeemedRewards || [])
+        ].map(normalizeRedeemedReward);
+        
         // Update the child data, preserving any existing fields not in childData
         updatedChildren[childIndex] = {
           ...(existingChild || {}), // Keep all existing fields if they exist
@@ -478,8 +496,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           points: childData.points !== undefined ? childData.points : (existingChild?.points || 0),
           xp: childData.xp !== undefined ? childData.xp : (existingChild?.xp || 0),
           level: childData.level !== undefined ? childData.level : (existingChild?.level || 1),
-          completedQuests: childData.completedQuests || existingChild?.completedQuests || [],
-          redeemedRewards: childData.redeemedRewards || existingChild?.redeemedRewards || []
+          completedQuests: normalizedCompletedQuests,
+          redeemedRewards: normalizedRedeemedRewards
         };
         
         parentUser.children = updatedChildren;
@@ -488,14 +506,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Ensure we have all required fields for the parent user
       const updatedParentUser = { 
         ...parentUser,
-        children: parentUser.children.map((child: ChildProfile) => ({
-          ...child,
-          points: child.points || 0,
-          xp: child.xp || 0,
-          level: child.level || 1,
-          completedQuests: child.completedQuests || [],
-          redeemedRewards: child.redeemedRewards || []
-        }))
+        children: parentUser.children.map((child: ChildProfile) => {
+          // Normalize quest and reward data for each child
+          const normalizedCompletedQuests = (child.completedQuests || []).map(normalizeCompletedQuest);
+          const normalizedRedeemedRewards = (child.redeemedRewards || []).map(normalizeRedeemedReward);
+          
+          return {
+            ...child,
+            points: child.points || 0,
+            xp: child.xp || 0,
+            level: child.level || 1,
+            completedQuests: normalizedCompletedQuests,
+            redeemedRewards: normalizedRedeemedRewards
+          };
+        })
       };
       
       console.log('[syncChildToParent] Updated parent user:', JSON.stringify(updatedParentUser, null, 2));
@@ -525,13 +549,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('Syncing child data before logout...');
         
         // Get the current child data from state to ensure we have the latest
-        const currentChildData = {
+        const currentChildData: ChildProfile = {
           ...childProfile,
           points: user.points !== undefined ? user.points : childProfile.points,
           xp: user.xp !== undefined ? user.xp : childProfile.xp,
           level: user.level !== undefined ? user.level : childProfile.level,
-          completedQuests: user.completedQuests || childProfile.completedQuests || [],
-          redeemedRewards: user.redeemedRewards || childProfile.redeemedRewards || []
+          completedQuests: [
+            ...(Array.isArray(user.completedQuests) ? user.completedQuests.map(normalizeCompletedQuest) : []),
+            ...(Array.isArray(childProfile.completedQuests) ? childProfile.completedQuests.map(normalizeCompletedQuest) : [])
+          ],
+          redeemedRewards: [
+            ...(Array.isArray(user.redeemedRewards) ? user.redeemedRewards.map(normalizeRedeemedReward) : []),
+            ...(Array.isArray(childProfile.redeemedRewards) ? childProfile.redeemedRewards.map(normalizeRedeemedReward) : [])
+          ]
         };
         
         console.log('Current child data before sync:', JSON.stringify(currentChildData, null, 2));
@@ -685,12 +715,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const xpReward = quest.xpReward || 0;
         const pointReward = quest.coinReward || 0;
         
-        // Update child's XP and points
-        const updatedChild = {
+        // Update child's XP and points with proper type normalization
+        const updatedChild: ChildProfile = {
           ...childProfile,
           xp: (childProfile.xp || 0) + xpReward,
           points: (childProfile.points || 0) + pointReward,
-          completedQuests: [...(childProfile.completedQuests || []), questId]
+          completedQuests: [
+            ...(childProfile.completedQuests || []).map(normalizeCompletedQuest),
+            {
+              id: questId,
+              title: quest.title,
+              completedAt: new Date().toISOString(),
+              pointsEarned: pointReward,
+              category: quest.category || 'general'
+            }
+          ]
         };
 
         // Update child profile in state and storage first
@@ -875,19 +914,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Update points and mark reward as redeemed
       const updatedPoints = Math.max(0, childPoints - rewardCost);
       
+      const rewardData = {
+        id: rewardId,
+        name: reward.title,
+        cost: rewardCost,
+        redeemedAt: new Date().toISOString(),
+        category: reward.category || 'other'
+      };
+
       if (currentUser.type === 'parent') {
-        // Update parent's child data
-        const updatedChildren = currentUser.children?.map(child => 
-          child.id === childId 
-            ? { 
-                ...child, 
-                points: updatedPoints,
-                redeemedRewards: [...(child.redeemedRewards || []), rewardId]
-              } 
-            : child
-        ) || [];
+        // Update parent's child data with proper type normalization
+        const updatedChildren = (currentUser.children || []).map(child => {
+          if (child.id === childId) {
+            const existingRewards = (child.redeemedRewards || []).map(normalizeRedeemedReward);
+            return { 
+              ...child, 
+              points: updatedPoints,
+              redeemedRewards: [...existingRewards, rewardData]
+            };
+          }
+          return child;
+        });
         
-        const updatedUser = {
+        const updatedUser: User = {
           ...currentUser,
           children: updatedChildren
         };
@@ -896,18 +945,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
       } else {
         // For child users, update their own points and childProfile state
+        const existingRewards = (currentUser.redeemedRewards || []).map(normalizeRedeemedReward);
         const updatedChild = { 
           ...currentUser, 
           points: updatedPoints,
-          redeemedRewards: [...(currentUser.redeemedRewards || []), rewardId],
+          redeemedRewards: [...existingRewards, rewardData],
         } as User;
         
         // Also update the childProfile state if it exists
         if (childProfile) {
-          const updatedProfile = {
+          const childExistingRewards = (childProfile.redeemedRewards || []).map(normalizeRedeemedReward);
+          const updatedProfile: ChildProfile = {
             ...childProfile,
             points: updatedPoints,
-            redeemedRewards: [...(childProfile.redeemedRewards || []), rewardId]
+            redeemedRewards: [...childExistingRewards, rewardData]
           };
           
           setChildProfile(updatedProfile);

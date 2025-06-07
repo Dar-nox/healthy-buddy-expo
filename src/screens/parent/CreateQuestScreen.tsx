@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { StatusBar } from 'react-native';
+
 import { 
   View, 
   Text, 
@@ -243,6 +245,7 @@ const CreateQuestScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    marginTop: StatusBar.currentHeight,
     backgroundColor: '#f5f5f5',
   },
   header: {

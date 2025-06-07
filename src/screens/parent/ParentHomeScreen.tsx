@@ -1,4 +1,5 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { 
   View, 
   Text, 
@@ -13,10 +14,13 @@ import {
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { RootStackParamList } from '../../types/navigation';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../context/AuthContext';
-import { ChildProfile } from '../../types';
+import { ChildProfile, Quest } from '../../types';
 
-type ParentHomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ParentTabs'>;
+type ParentHomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'ParentTabs'> & {
+  navigate: (screen: 'ParentTabs' | 'Profile' | 'ChildProfile' | 'CreateQuest' | 'ChildSelection', params?: any) => void;
+};
 
 type Props = {
   navigation: ParentHomeScreenNavigationProp;
@@ -25,66 +29,71 @@ type Props = {
 interface Activity {
   id: string;
   childName: string;
+  childAvatar?: string;
   action: string;
   quest?: string;
   reward?: string;
   badge?: string;
   points?: number;
   time: string;
+  timestamp?: number;
+  type?: 'quest' | 'reward' | 'badge';
 }
 
 const ParentHomeScreen: React.FC<Props> = ({ navigation }) => {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [children, setChildren] = useState<ChildProfile[]>([]);
-  const [recentActivities, setRecentActivities] = useState<Activity[]>([]);
+  const [quests, setQuests] = useState<Quest[]>([]);
 
-  // Function to generate recent activities from children's data
-  const generateActivities = (childrenProfiles: ChildProfile[]): Activity[] => {
-    const activities: Activity[] = [];
-    
-    childrenProfiles.forEach(child => {
-      // Add activities based on completed quests
-      if (child.completedQuests && child.completedQuests.length > 0) {
-        child.completedQuests.forEach((questId, index) => {
-          // In a real app, you would fetch the actual quest details here
-          activities.push({
-            id: `quest-${child.id}-${index}`,
-            childName: child.name,
-            action: 'completed the quest',
-            quest: `Quest #${index + 1}`,
-            points: 10, // Default points for a quest
-            time: 'recently',
-          });
-        });
+  // Function to fetch quests created by the parent
+  const fetchQuests = async () => {
+    try {
+      const response = await AsyncStorage.getItem('@healthy_buddy_quests');
+      console.log('Quests from storage:', response);
+      if (response) {
+        const allQuests: Quest[] = JSON.parse(response);
+        console.log('Parsed quests:', allQuests);
+        // Filter quests created by the current user
+        const parentQuests = allQuests.filter(quest => quest.createdBy === user?.id);
+        console.log('Filtered quests:', parentQuests);
+        setQuests(parentQuests);
+      } else {
+        console.log('No quests found in storage');
+        setQuests([]);
       }
-
-      // Add activities based on inventory (redeemed rewards)
-      if (child.inventory && child.inventory.length > 0) {
-        child.inventory.forEach((item, index) => {
-          activities.push({
-            id: `reward-${child.id}-${index}`,
-            childName: child.name,
-            action: 'unlocked a new item',
-            reward: item.name || 'New Item',
-            time: 'recently',
-          });
-        });
-      }
-    });
-
-    // Sort by most recent (in a real app, you'd have actual timestamps)
-    return activities.sort(() => Math.random() - 0.5).slice(0, 5); // Show 5 most recent
+    } catch (error) {
+      console.error('Error fetching quests:', error);
+      setQuests([]);
+    }
   };
 
-  useEffect(() => {
-    if (user && user.children) {
-      setChildren(user.children);
-      const activities = generateActivities(user.children);
-      setRecentActivities(activities);
+  const loadData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      if (user) {
+        if (user.children) {
+          setChildren(user.children);
+        }
+        await fetchQuests();
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, [user]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Refresh quests when the screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   const renderChildCard = ({ item }: { item: ChildProfile }) => (
     <TouchableOpacity 
@@ -113,35 +122,54 @@ const ParentHomeScreen: React.FC<Props> = ({ navigation }) => {
     </TouchableOpacity>
   );
 
-  const renderActivityItem = ({ item }: { item: typeof recentActivities[0] }) => (
-    <View style={styles.activityItem}>
-      <View style={styles.activityIcon}>
-        {item.action.includes('completed') && (
-          <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-        )}
-        {item.action.includes('redeemed') && (
-          <Ionicons name="gift" size={20} color="#9C27B0" />
-        )}
-        {item.action.includes('earned') && (
-          <Ionicons name="ribbon" size={20} color="#FF9800" />
-        )}
-      </View>
-      <View style={styles.activityContent}>
-        <Text style={styles.activityText}>
-          <Text style={styles.bold}>{item.childName}</Text> {item.action} 
-          {item.quest && <Text style={styles.highlight}>"{item.quest}"</Text>}
-          {item.reward && <Text style={styles.highlight}>"{item.reward}"</Text>}
-          {item.badge && <Text style={styles.highlight}>"{item.badge}"</Text>}
-          {item.points && (
-            <Text style={item.points > 0 ? styles.positivePoints : styles.negativePoints}>
-              {' '}{item.points > 0 ? '+' : ''}{item.points} XP
+  const renderQuestItem = ({ item }: { item: Quest }) => {
+    const isCompleted = item.isCompleted;
+    
+    return (
+      <View style={[
+        styles.questItem,
+        isCompleted && styles.questItemCompleted
+      ]}>
+        <View style={styles.questContent}>
+          <View style={styles.questHeader}>
+            <Text 
+              style={[
+                styles.questTitle, 
+                isCompleted && styles.questTitleCompleted
+              ]} 
+              numberOfLines={1} 
+              ellipsizeMode="tail"
+            >
+              {item.title || 'Untitled Quest'}
             </Text>
-          )}
-        </Text>
-        <Text style={styles.activityTime}>{item.time}</Text>
+            {isCompleted && (
+              <View style={styles.completedBadge}>
+                <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                <Text style={styles.completedText}>Completed</Text>
+              </View>
+            )}
+          </View>
+          <Text 
+            style={[
+              styles.questDescription,
+              isCompleted && styles.questDescriptionCompleted
+            ]} 
+            numberOfLines={2}
+          >
+            {item.description || 'No description'}
+          </Text>
+          <View style={styles.questFooter}>
+            <Text style={styles.questReward}>
+              🎯 {item.xpReward || 0} XP • {item.coinReward || 0} coins
+            </Text>
+            <Text style={styles.questCategory}>
+              {item.category || 'general'}
+            </Text>
+          </View>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -188,35 +216,47 @@ const ParentHomeScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.actionText}>Create Quest</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('AddReward')}
+          >
             <View style={[styles.actionIcon, { backgroundColor: '#E8F5E9' }]}>
               <Ionicons name="gift" size={24} color="#9C27B0" />
             </View>
             <Text style={styles.actionText}>Add Reward</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('Rewards')}
+          >
             <View style={[styles.actionIcon, { backgroundColor: '#E8F5E9' }]}>
-              <Ionicons name="stats-chart" size={24} color="#2196F3" />
+              <Ionicons name="gift-outline" size={24} color="#9C27B0" />
             </View>
-            <Text style={styles.actionText}>Progress</Text>
+            <Text style={styles.actionText}>Rewards</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent Activities</Text>
-            <TouchableOpacity>
-              <Text style={styles.seeAll}>See All</Text>
-            </TouchableOpacity>
+            <Text style={styles.sectionTitle}>Your Quests</Text>
           </View>
-          
-          <FlatList
-            data={recentActivities}
-            renderItem={renderActivityItem}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-          />
+          {isLoading ? (
+            <ActivityIndicator size="small" color="#4A90E2" />
+          ) : quests.length > 0 ? (
+            <FlatList
+              data={quests}
+              renderItem={renderQuestItem}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={true}
+              contentContainerStyle={styles.questsList}
+            />
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="book-outline" size={40} color="#ccc" />
+              <Text style={styles.emptyStateText}>No quests created yet</Text>
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -370,49 +410,109 @@ const styles = StyleSheet.create({
     color: '#555',
     textAlign: 'center',
   },
-  activityItem: {
+  questItem: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    borderLeftWidth: 4,
+    borderLeftColor: 'transparent',
+  },
+  questItemCompleted: {
+    backgroundColor: '#f8f9fa',
+    borderLeftColor: '#4CAF50',
+  },
+  questHeader: {
     flexDirection: 'row',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  activityIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#f5f5f5',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginRight: 12,
+    marginBottom: 8,
   },
-  activityContent: {
-    flex: 1,
+  completedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e8f5e9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  activityText: {
-    fontSize: 14,
-    color: '#555',
-    lineHeight: 20,
-  },
-  bold: {
-    fontWeight: '600',
-    color: '#333',
-  },
-  highlight: {
+  completedText: {
     color: '#4CAF50',
+    fontSize: 12,
+    marginLeft: 4,
     fontWeight: '500',
   },
-  positivePoints: {
-    color: '#4CAF50',
-    fontWeight: '600',
+  questContent: {
+    flex: 1,
   },
-  negativePoints: {
-    color: '#F44336',
+  questTitle: {
+    fontSize: 16,
     fontWeight: '600',
+    color: '#2c3e50',
+    flex: 1,
+    marginRight: 8,
   },
-  activityTime: {
+  questTitleCompleted: {
+    textDecorationLine: 'line-through',
+    color: '#95a5a6',
+  },
+  questDescriptionCompleted: {
+    color: '#bdc3c7',
+  },
+  questDescription: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  questFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  questReward: {
+    fontSize: 13,
+    color: '#2ecc71',
+    fontWeight: '500',
+  },
+  questCategory: {
     fontSize: 12,
-    color: '#999',
-    marginTop: 2,
+    color: '#95a5a6',
+    backgroundColor: '#f5f6f7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  questsList: {
+    paddingVertical: 8,
+  },
+  emptyState: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 16,
+  },
+  createButton: {
+    marginTop: 16,
+    backgroundColor: '#4A90E2',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  createButtonText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });
 
