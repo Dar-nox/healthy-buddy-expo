@@ -24,19 +24,11 @@ type Props = {
 };
 
 const AddRewardScreen: React.FC<Props> = ({ navigation }) => {
-  const { user } = useAuth();
-  
-  // Temporary function until we add it to AuthContext
-  const addReward = async (reward: any) => {
-    // This is a placeholder - in a real app, this would be implemented in the AuthContext
-    console.log('Adding reward:', reward);
-    // In a real implementation, this would update the rewards in AsyncStorage
-    // and update the context state
-  };
+  const { user, createReward } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [cost, setCost] = useState('');
-  const [category, setCategory] = useState('home');
+  const [category, setCategory] = useState<'home' | 'entertainment' | 'food' | 'other'>('home');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleAddReward = async () => {
@@ -52,17 +44,16 @@ const AddRewardScreen: React.FC<Props> = ({ navigation }) => {
 
     try {
       setIsLoading(true);
-      await addReward({
-        id: Date.now().toString(),
+      await createReward({
         title: title.trim(),
         description: description.trim(),
         cost: Number(cost),
         category,
-        isActive: true,
         createdBy: user?.id || '',
-        createdAt: new Date().toISOString(),
         icon: 'gift',
-        type: 'physical'
+        type: 'physical',
+        isGlobal: true, // Make reward available to all children by default
+        maxRedemptions: 1 // Default to single use
       });
       
       Alert.alert('Success', 'Reward added successfully', [
@@ -132,10 +123,10 @@ const AddRewardScreen: React.FC<Props> = ({ navigation }) => {
               onValueChange={(itemValue) => setCategory(itemValue)}
               style={styles.picker}
             >
-              <Picker.Item label="Home" value="home" />
-              <Picker.Item label="Entertainment" value="entertainment" />
-              <Picker.Item label="Food" value="food" />
-              <Picker.Item label="Other" value="other" />
+              <Picker.Item label="Home" value="home" key="home" />
+              <Picker.Item label="Entertainment" value="entertainment" key="entertainment" />
+              <Picker.Item label="Food" value="food" key="food" />
+              <Picker.Item label="Other" value="other" key="other" />
             </Picker>
           </View>
         </View>

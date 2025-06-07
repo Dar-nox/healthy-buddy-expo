@@ -15,12 +15,7 @@ const ParentProfileScreen: React.FC<Props> = ({ navigation }) => {
   const { user, logout, cleanupTestData } = useAuth();
   
   const menuItems = [
-    { icon: 'person-outline', label: 'Edit Profile', screen: 'EditProfile' },
     { icon: 'people-outline', label: 'Manage Children', screen: 'ChildSelection' },
-    { icon: 'notifications-outline', label: 'Notifications', screen: 'Notifications' },
-    { icon: 'settings-outline', label: 'Settings', screen: 'Settings' },
-    { icon: 'help-circle-outline', label: 'Help & Support', screen: 'Help' },
-    { icon: 'information-circle-outline', label: 'About', screen: 'About' },
     { 
       icon: 'trash-outline', 
       label: 'Clean Up Data', 
